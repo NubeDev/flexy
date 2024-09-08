@@ -1,0 +1,32 @@
+app:
+  jwtsecret: "233"
+  passwordsalt: "fgyf"
+  prefixurl: "http://127.0.0.1:8080"
+  timeformat: "20060102"
+  expiretimeformat: "2006/01/02 15:04:05"
+  enabledcors: false
+
+server:
+  runmode: "debug"
+  httpport: 8080
+  readtimeout: 60s
+  writetimeout: 60s
+
+database:
+  echosql: false
+  type: "sqlite"
+  user: "root"
+  password: "newpassword"
+  host: "127.0.0.1:3306"
+  name: "blog"
+  tableprefix: "gin_"
+
+
+
+redis:
+  host: "127.0.0.1:6379"
+  db: 0
+  password: ""
+  maxidle: 30
+  maxactive: 30
+  idletimeout: 200s
