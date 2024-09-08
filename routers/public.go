@@ -7,7 +7,7 @@ import (
 )
 
 func InitTestRouter(router *gin.RouterGroup) {
-	test := router.Group("/test").Use(
+	test := router.Group("public").Use(
 		middleware.TranslationHandler(),
 	)
 	{

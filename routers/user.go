@@ -10,9 +10,9 @@ import (
 func InitUserRouter(router *gin.RouterGroup) {
 	router.POST("/login", authController.UserLogin)                  // Login
 	router.POST("/refresh_token", authController.RefreshAccessToken) // Refresh access_token
-	router.POST("/api/users", userController.CreateUser)             // Create user
+	router.POST("/users", userController.CreateUser)                 // Create user
 
-	endPoint := router.Group("/api/users").Use(middleware.TranslationHandler())
+	endPoint := router.Group("users").Use(middleware.TranslationHandler())
 	if useAuth {
 		endPoint.Use(
 			middleware.JWTHandler(),

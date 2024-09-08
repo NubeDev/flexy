@@ -7,7 +7,7 @@ import (
 )
 
 func InitHostRouter(Router *gin.RouterGroup) {
-	endPoint := Router.Group("/api/hosts").Use(middleware.TranslationHandler())
+	endPoint := Router.Group("hosts").Use(middleware.TranslationHandler())
 	if useAuth {
 		endPoint.Use(
 			middleware.JWTHandler(),

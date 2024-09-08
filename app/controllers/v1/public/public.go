@@ -1,11 +1,10 @@
 package indexController
 
 import (
-	"net/http"
-
 	"github.com/NubeDev/flexy/common"
 	"github.com/NubeDev/flexy/utils/code"
 	"github.com/gin-gonic/gin"
+	"net/http"
 )
 
 func Ping(c *gin.Context) {

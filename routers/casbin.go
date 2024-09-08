@@ -8,7 +8,7 @@ import (
 )
 
 func InitCasbinRouter(router *gin.RouterGroup) {
-	endPoint := router.Group("/api/casbin").Use(middleware.TranslationHandler())
+	endPoint := router.Group("casbin").Use(middleware.TranslationHandler())
 	if useAuth {
 		endPoint.Use(
 			middleware.JWTHandler(),

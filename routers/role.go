@@ -7,7 +7,7 @@ import (
 )
 
 func InitRoleRouter(router *gin.RouterGroup) {
-	endPoint := router.Group("/role").Use(middleware.TranslationHandler())
+	endPoint := router.Group("role").Use(middleware.TranslationHandler())
 	if !useAuth {
 		endPoint.Use(
 			middleware.JWTHandler(),

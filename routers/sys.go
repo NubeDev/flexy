@@ -7,7 +7,7 @@ import (
 )
 
 func InitSysRouter(router *gin.RouterGroup) {
-	endPoint := router.Group("/api/system").Use(middleware.TranslationHandler())
+	endPoint := router.Group("system").Use(middleware.TranslationHandler())
 	if useAuth {
 		endPoint.Use(
 			middleware.JWTHandler(),

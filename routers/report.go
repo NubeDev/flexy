@@ -7,7 +7,7 @@ import (
 )
 
 func InitReportRouter(router *gin.RouterGroup) {
-	endPoint := router.Group("/api/reports").Use(middleware.TranslationHandler())
+	endPoint := router.Group("reports").Use(middleware.TranslationHandler())
 	if useAuth {
 		endPoint.Use(
 			middleware.JWTHandler(),
