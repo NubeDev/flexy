@@ -2,7 +2,7 @@ package utils
 
 import (
 	"github.com/NubeDev/flexy/common"
-	"github.com/NubeDev/flexy/utils/com"
+	"github.com/NubeDev/flexy/helpers/com"
 	"github.com/gin-gonic/gin"
 )
 

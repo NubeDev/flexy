@@ -30,7 +30,8 @@ type PaginateStruct struct {
 }
 
 type BaseModel struct {
-	ID        uint      `gorm:"primary_key" json:"id"`
+	ID uint `gorm:"primary_key" json:"id"`
+	//UUID string `gorm:"primary_key" json:"uuid"`
 	CreatedAt JSONTime  `gorm:"column:created_at" json:"created_at"`
 	UpdatedAt JSONTime  `gorm:"column:updated_at" json:"updated_at"`
 	DeletedAt *JSONTime `sql:"index" json:"deleted_at"`
@@ -105,6 +106,7 @@ func Setup() {
 		&JwtBlacklist{},
 		&Role{},
 		&Menu{},
+		&Host{},
 	)
 }
 

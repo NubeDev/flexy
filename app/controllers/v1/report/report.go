@@ -40,13 +40,8 @@ func Report(c *gin.Context) {
 	// Store information
 	var reportResult = reportService.ReportInformation(report, c.ClientIP())
 
-	if reportResult.ID == 0 {
-		appG.Response(http.StatusInternalServerError, code.ERROR, "Entry failed, please try again later.", nil)
-		return
-	}
-
 	m := make(map[string]interface{})
-	m["id"] = reportResult.ID
+	m["uuid"] = reportResult.UUID
 	m["name"] = report.Name
 	// m["created_at"] = utils.TimeToDateTimesString(reportResult.CreatedAt)
 	appG.Response(http.StatusOK, code.SUCCESS, "Information entered successfully!", m)

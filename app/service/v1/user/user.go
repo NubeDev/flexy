@@ -2,13 +2,12 @@ package userService
 
 import (
 	"fmt"
-	"log"
-	"strings"
-	"time"
-
 	model "github.com/NubeDev/flexy/app/models"
 	"github.com/NubeDev/flexy/utils"
 	"github.com/NubeDev/flexy/utils/code"
+	"log"
+	"strings"
+	"time"
 )
 
 type RefreshAccessTokenStruct struct {

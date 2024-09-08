@@ -5,9 +5,9 @@ import (
 
 	roleService "github.com/NubeDev/flexy/app/service/v1/role"
 	"github.com/NubeDev/flexy/common"
+	"github.com/NubeDev/flexy/helpers/com"
 	"github.com/NubeDev/flexy/utils"
 	"github.com/NubeDev/flexy/utils/code"
-	"github.com/NubeDev/flexy/utils/com"
 	"github.com/gin-gonic/gin"
 )
 

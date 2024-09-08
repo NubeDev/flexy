@@ -1,13 +1,12 @@
 package userController
 
 import (
-	"net/http"
-
 	userService "github.com/NubeDev/flexy/app/service/v1/user"
 	"github.com/NubeDev/flexy/common"
 	"github.com/NubeDev/flexy/utils"
 	"github.com/NubeDev/flexy/utils/code"
 	"github.com/gin-gonic/gin"
+	"net/http"
 )
 
 func CreateUser(c *gin.Context) {

@@ -52,7 +52,7 @@ func GetUser(maps map[string]interface{}) (*Auth, error) {
 			return db.Select("*")
 		}).First(&user).Error
 
-	if err != nil && err != gorm.ErrRecordNotFound {
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
 

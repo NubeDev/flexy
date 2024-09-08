@@ -33,12 +33,12 @@ func CreateRole(role Role) error {
 }
 
 func GetRoles(pageNum int, pageSize int, where map[string]interface{}) ([]*Role, error) {
-	var role []*Role
+	var m []*Role
 	db, _ := BuildCondition(db, where)
-	err := db.Select("*").Offset(pageNum).Limit(pageSize).Find(&role).Error
+	err := db.Select("*").Offset(pageNum).Limit(pageSize).Find(&m).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
 
-	return role, nil
+	return m, nil
 }

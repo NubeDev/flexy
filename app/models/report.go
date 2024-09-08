@@ -1,7 +1,11 @@
 package model
 
 type Report struct {
-	BaseModel
+	UUID      string    `gorm:"primary_key" json:"uuid"`
+	CreatedAt JSONTime  `gorm:"column:created_at" json:"created_at"`
+	UpdatedAt JSONTime  `gorm:"column:updated_at" json:"updated_at"`
+	DeletedAt *JSONTime `sql:"index" json:"deleted_at"`
+
 	ActivityId int    `json:"activity_id"`
 	Name       string `gorm:"Size:20" json:"name"`
 	Phone      string `gorm:"Size:30;index:idx_phone" json:"phone"`
@@ -19,7 +23,6 @@ func GetReportUserCount(r Report) int64 {
 }
 
 func CreateReportNewRecord(r Report) Report {
-	//db.NewRecord(r)
 	db.Create(&r)
 	return r
 }
