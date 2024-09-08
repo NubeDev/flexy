@@ -21,12 +21,5 @@ database:
   name: "blog"
   tableprefix: "gin_"
 
-
-
-redis:
-  host: "127.0.0.1:6379"
-  db: 0
-  password: ""
-  maxidle: 30
-  maxactive: 30
-  idletimeout: 200s
+nats:
+  topicprefix: "host"

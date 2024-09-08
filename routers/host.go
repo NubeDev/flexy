@@ -16,5 +16,9 @@ func InitHostRouter(Router *gin.RouterGroup) {
 	}
 	{
 		endPoint.POST("", hostController.CreateHost)
+		endPoint.GET("", hostController.GetHosts)
+		endPoint.GET("/:uuid", hostController.GetHost)
+		endPoint.PATCH("/:uuid", hostController.UpdateHost)
+		endPoint.DELETE("/:uuid", hostController.DeleteHost)
 	}
 }

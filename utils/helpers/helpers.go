@@ -1,11 +1,9 @@
 package helpers
 
 import (
-	"errors"
 	"fmt"
 	"github.com/google/uuid"
 	"math/rand"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -49,22 +47,4 @@ func shuffleCharacters(word string) string {
 	shuffledWord := string(characters)
 
 	return shuffledWord
-}
-
-func ProcessID(input string) (int, error) {
-	// Check if the first two letters start with "R-"
-	if !strings.HasPrefix(input, "R-") {
-		return 0, errors.New("string does not start with 'R-'")
-	}
-
-	// Remove "R-" prefix
-	input = input[2:]
-
-	// Try to parse the remaining string as an integer
-	num, err := strconv.Atoi(input)
-	if err != nil {
-		return 0, err
-	}
-
-	return num, nil
 }

@@ -1,4 +1,4 @@
-package natsrouter
+package natsapis
 
 import (
 	"encoding/json"
@@ -23,7 +23,7 @@ func ServerHandler() func(m *nats.Msg) {
 			return
 		}
 
-		handlerFunc := hostHandler(reqBody.Endpoint, reqBody.Method, reqBody.Body)
+		handlerFunc := rqlHandler(reqBody.Endpoint, reqBody.Method, reqBody.Body)
 
 		if handlerFunc == nil {
 			m.Respond([]byte("Unknown endpoint or method"))

@@ -3,7 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
-	"github.com/NubeDev/flexy/helpers"
+	"github.com/NubeDev/flexy/utils/helpers"
 	"gorm.io/gorm"
 	"log"
 )
@@ -85,4 +85,24 @@ func CreateHost(body *Host) (*Host, error) {
 	}
 	// Return the created host and nil error
 	return body, nil
+}
+
+func DeleteHost(uuid string) error {
+	var host Host
+	// Find the host by UUID
+	result := db.Where("uuid = ?", uuid).First(&host)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("host with UUID %s not found", uuid)
+		}
+		log.Printf("Error finding host with UUID %s: %v", uuid, result.Error)
+		return result.Error
+	}
+	// Soft delete the host
+	result = db.Delete(&host)
+	if result.Error != nil {
+		log.Printf("Error deleting host with UUID %s: %v", uuid, result.Error)
+		return result.Error
+	}
+	return nil
 }

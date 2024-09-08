@@ -3,10 +3,10 @@ package casbinController
 import (
 	casbinService "github.com/NubeDev/flexy/app/services/v1/casbin"
 	"github.com/NubeDev/flexy/common"
-	"github.com/NubeDev/flexy/helpers/com"
 	"github.com/NubeDev/flexy/utils"
 	"github.com/NubeDev/flexy/utils/casbin"
 	"github.com/NubeDev/flexy/utils/code"
+	"github.com/NubeDev/flexy/utils/com"
 	"github.com/gin-gonic/gin"
 	"net/http"
 )

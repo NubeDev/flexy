@@ -12,13 +12,14 @@ var useAuth = setting.ServerSetting.UseAuth
 func InitRouter(r *gin.Engine) *gin.Engine {
 	v1 := r.Group("/v1/api")
 	{
-		InitUserRouter(v1) // User management
-		InitRoleRouter(v1) // Roles
+		InitUserRouter(v1)
+		InitRoleRouter(v1)
 		InitCasbinRouter(v1)
-		InitSysRouter(v1)    // System settings
-		InitTestRouter(v1)   // Test routes
-		InitReportRouter(v1) // Reporting
-		InitHostRouter(v1)   // Reporting
+		InitSysRouter(v1)
+		InitTestRouter(v1)
+		InitReportRouter(v1)
+		InitHostRouter(v1)
+		InitRQLRouter(v1)
 	}
 
 	// Route list

@@ -34,15 +34,21 @@ type Database struct {
 	TablePrefix string `yaml:"tableprefix"`
 }
 
+type Nats struct {
+	TopicPrefix string `yaml:"topicprefix"`
+}
+
 type Config struct {
 	App      *App      `yaml:"app"`
 	Server   *Server   `yaml:"server"`
 	Database *Database `yaml:"database"`
+	Nats     *Nats     `yaml:"nats"`
 }
 
 var AppSetting = &App{}
 var ServerSetting = &Server{}
 var DatabaseSetting = &Database{}
+var NatsSettings = &Nats{}
 
 // Setup initialize the configuration instance
 func Setup(useAuth bool) {
@@ -62,9 +68,17 @@ func Setup(useAuth bool) {
 	AppSetting = cfg.App
 	ServerSetting = cfg.Server
 	DatabaseSetting = cfg.Database
+	NatsSettings = cfg.Nats
 
 	// Convert time durations from seconds to time.Duration
 	ServerSetting.ReadTimeout = ServerSetting.ReadTimeout * time.Second
 	ServerSetting.WriteTimeout = ServerSetting.WriteTimeout * time.Second
 	ServerSetting.UseAuth = useAuth
+	if NatsSettings == nil {
+		NatsSettings = &Nats{}
+	}
+	if NatsSettings.TopicPrefix == "" {
+		NatsSettings.TopicPrefix = "host"
+	}
+
 }
