@@ -30,7 +30,7 @@ func shuffleCharacters(word string) string {
 	// Convert the word to a slice of characters
 	characters := []rune(word)
 
-	// Find the index of the first letter in the original word
+	// Find the public of the first letter in the original word
 	firstLetterIndex := 0
 	for i, char := range characters {
 		if unicode.IsLetter(char) {

@@ -4,7 +4,7 @@ type Menu struct {
 	UUID      string    `gorm:"primary_key" json:"uuid"`
 	CreatedAt JSONTime  `gorm:"column:created_at" json:"created_at"`
 	UpdatedAt JSONTime  `gorm:"column:updated_at" json:"updated_at"`
-	DeletedAt *JSONTime `sql:"index" json:"deleted_at"`
+	DeletedAt *JSONTime `sql:"public" json:"deleted_at"`
 
 	ParentId   int    `json:"parent_id" gorm:"type:int(11);"`
 	Sort       int    `json:"sort" gorm:"type:int(4);"`

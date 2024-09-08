@@ -6,10 +6,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func InitReportRouter(Router *gin.RouterGroup) {
-	report := Router.Group("/report").Use(
-		middleware.TranslationHandler())
+func InitReportRouter(router *gin.RouterGroup) {
+	endPoint := router.Group("/api/reports").Use(middleware.TranslationHandler())
+	if useAuth {
+		endPoint.Use(
+			middleware.JWTHandler(),
+			middleware.CasbinHandler(),
+		)
+	}
 	{
-		report.POST("", reportController.Report)
+		endPoint.POST("", reportController.Report)
 	}
 }

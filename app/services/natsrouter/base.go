@@ -41,3 +41,10 @@ func (r *NatsRouter) Publish(subject string, reply string, data []byte) {
 		log.Println("Error publishing message:", err)
 	}
 }
+
+func PingHandler(uuid string) func(m *nats.Msg) {
+	return func(m *nats.Msg) {
+		log.Printf("Ping received for UUID %s, replying with pong", uuid)
+		m.Respond([]byte("pong"))
+	}
+}

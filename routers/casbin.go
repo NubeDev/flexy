@@ -7,15 +7,18 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func InitCasbinRouter(Router *gin.RouterGroup) {
-	casbin := Router.Group("/casbin").Use(
-		middleware.TranslationHandler(),
-		middleware.JWTHandler(),
-		middleware.CasbinHandler())
+func InitCasbinRouter(router *gin.RouterGroup) {
+	endPoint := router.Group("/api/casbin").Use(middleware.TranslationHandler())
+	if useAuth {
+		endPoint.Use(
+			middleware.JWTHandler(),
+			middleware.CasbinHandler(),
+		)
+	}
 	{
-		casbin.GET("", casbinController.GetCasbinList)
-		casbin.POST("", casbinController.CreateCasbin)
-		casbin.PUT("/:id", casbinController.UpdateCasbin)
-		casbin.DELETE("/:id", casbinController.DeleteCasbin)
+		endPoint.GET("", casbinController.GetCasbinList)
+		endPoint.POST("", casbinController.CreateCasbin)
+		endPoint.PUT("/:id", casbinController.UpdateCasbin)
+		endPoint.DELETE("/:id", casbinController.DeleteCasbin)
 	}
 }

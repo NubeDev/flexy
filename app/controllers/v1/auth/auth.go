@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	model "github.com/NubeDev/flexy/app/models"
-	userService "github.com/NubeDev/flexy/app/service/v1/user"
+	userService "github.com/NubeDev/flexy/app/services/v1/user"
 	"github.com/NubeDev/flexy/common"
 	"github.com/NubeDev/flexy/utils"
 	"github.com/NubeDev/flexy/utils/code"

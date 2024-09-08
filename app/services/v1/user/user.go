@@ -39,7 +39,7 @@ type UserStruct struct {
 }
 
 type TestList struct {
-	Index int `json:"index"`
+	Index int `json:"public"`
 	*model.Auth
 }
 

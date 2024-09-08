@@ -9,7 +9,7 @@ type Role struct {
 	RoleId    uint      `gorm:"primary_key" json:"role_id"` // Role Code
 	CreatedAt JSONTime  `gorm:"column:created_at" json:"created_at"`
 	UpdatedAt JSONTime  `gorm:"column:updated_at" json:"updated_at"`
-	DeletedAt *JSONTime `sql:"index" json:"deleted_at"`
+	DeletedAt *JSONTime `sql:"public" json:"deleted_at"`
 	RoleName  string    `gorm:"type:varchar(128);" json:"role_name"` // Role Name
 	IsAdmin   bool      `gorm:"type:int(1);DEFAULT:0;NOT NULL;" json:"is_admin"`
 	Status    int       `gorm:"type:int(1);DEFAULT:0;NOT NULL;" json:"status"`

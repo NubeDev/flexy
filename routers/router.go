@@ -2,9 +2,12 @@ package routers
 
 import (
 	sysController "github.com/NubeDev/flexy/app/controllers/v1/sys"
+	"github.com/NubeDev/flexy/utils/setting"
 
 	"github.com/gin-gonic/gin"
 )
+
+var useAuth = setting.ServerSetting.UseAuth
 
 func InitRouter(r *gin.Engine) *gin.Engine {
 	v1 := r.Group("/v1/api")
@@ -15,6 +18,7 @@ func InitRouter(r *gin.Engine) *gin.Engine {
 		InitSysRouter(v1)    // System settings
 		InitTestRouter(v1)   // Test routes
 		InitReportRouter(v1) // Reporting
+		InitHostRouter(v1)   // Reporting
 	}
 
 	// Route list

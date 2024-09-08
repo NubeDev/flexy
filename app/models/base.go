@@ -34,13 +34,13 @@ type BaseModel struct {
 	//UUID string `gorm:"primary_key" json:"uuid"`
 	CreatedAt JSONTime  `gorm:"column:created_at" json:"created_at"`
 	UpdatedAt JSONTime  `gorm:"column:updated_at" json:"updated_at"`
-	DeletedAt *JSONTime `sql:"index" json:"deleted_at"`
+	DeletedAt *JSONTime `sql:"public" json:"deleted_at"`
 }
 
 type BaseModelNoId struct {
 	CreatedAt JSONTime  `gorm:"column:created_at" json:"created_at"`
 	UpdatedAt JSONTime  `gorm:"column:updated_at" json:"updated_at"`
-	DeletedAt *JSONTime `sql:"index" json:"deleted_at"`
+	DeletedAt *JSONTime `sql:"public" json:"deleted_at"`
 }
 
 func Setup() {
@@ -61,6 +61,10 @@ func Setup() {
 				Colorful:                  true,
 			},
 		)
+	}
+
+	if setting.DatabaseSetting.Type == "" {
+		setting.DatabaseSetting.Type = "sqlite"
 	}
 
 	// Switch between SQLite and MySQL based on the database type in the configuration

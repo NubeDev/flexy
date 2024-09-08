@@ -3,7 +3,7 @@ package roleController
 import (
 	"net/http"
 
-	roleService "github.com/NubeDev/flexy/app/service/v1/role"
+	roleService "github.com/NubeDev/flexy/app/services/v1/role"
 	"github.com/NubeDev/flexy/common"
 	"github.com/NubeDev/flexy/helpers/com"
 	"github.com/NubeDev/flexy/utils"

@@ -1,7 +1,7 @@
 package casbinController
 
 import (
-	casbinService "github.com/NubeDev/flexy/app/service/v1/casbin"
+	casbinService "github.com/NubeDev/flexy/app/services/v1/casbin"
 	"github.com/NubeDev/flexy/common"
 	"github.com/NubeDev/flexy/helpers/com"
 	"github.com/NubeDev/flexy/utils"

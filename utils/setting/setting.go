@@ -21,6 +21,7 @@ type Server struct {
 	HttpPort     int           `yaml:"httpport"`
 	ReadTimeout  time.Duration `yaml:"readtimeout"`
 	WriteTimeout time.Duration `yaml:"writetimeout"`
+	UseAuth      bool          `yaml:"-"`
 }
 
 type Database struct {
@@ -44,7 +45,7 @@ var ServerSetting = &Server{}
 var DatabaseSetting = &Database{}
 
 // Setup initialize the configuration instance
-func Setup() {
+func Setup(useAuth bool) {
 	var err error
 	data, err := ioutil.ReadFile("config/app.yaml")
 	if err != nil {
@@ -65,4 +66,5 @@ func Setup() {
 	// Convert time durations from seconds to time.Duration
 	ServerSetting.ReadTimeout = ServerSetting.ReadTimeout * time.Second
 	ServerSetting.WriteTimeout = ServerSetting.WriteTimeout * time.Second
+	ServerSetting.UseAuth = useAuth
 }

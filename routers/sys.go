@@ -6,12 +6,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func InitSysRouter(Router *gin.RouterGroup) {
-	sys := Router.Group("/sys").Use(
-		middleware.TranslationHandler(),
-		middleware.JWTHandler(),
-		middleware.CasbinHandler())
+func InitSysRouter(router *gin.RouterGroup) {
+	endPoint := router.Group("/api/system").Use(middleware.TranslationHandler())
+	if useAuth {
+		endPoint.Use(
+			middleware.JWTHandler(),
+			middleware.CasbinHandler(),
+		)
+	}
 	{
-		sys.GET("/router", sysController.GetRouterList) // Route list
+		endPoint.GET("/router", sysController.GetRouterList) // Route list
 	}
 }

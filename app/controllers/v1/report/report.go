@@ -3,7 +3,7 @@ package reportController
 import (
 	"net/http"
 
-	reportService "github.com/NubeDev/flexy/app/service/v1/report"
+	reportService "github.com/NubeDev/flexy/app/services/v1/report"
 	"github.com/NubeDev/flexy/common"
 	"github.com/NubeDev/flexy/utils/code"
 	"github.com/gin-gonic/gin"

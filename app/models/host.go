@@ -9,12 +9,13 @@ import (
 )
 
 type Host struct {
-	UUID      string    `gorm:"primary_key" json:"uuid"`
+	UUID string `gorm:"primary_key" json:"uuid"`
+	Name string `json:"name"`
+	IP   string `json:"ip"`
+
 	CreatedAt JSONTime  `gorm:"column:created_at" json:"created_at"`
 	UpdatedAt JSONTime  `gorm:"column:updated_at" json:"updated_at"`
-	DeletedAt *JSONTime `sql:"index" json:"deleted_at"`
-	Name      string    `json:"name"`
-	IP        string    `json:"ip"`
+	DeletedAt *JSONTime `sql:"public" json:"deleted_at"`
 }
 
 func (Host) TableName() string {
@@ -70,15 +71,18 @@ func UpdateHost(uuid string, body *Host) (*Host, error) {
 	return &host, nil
 }
 
-func CreateHost(body *Host) error {
+func CreateHost(body *Host) (*Host, error) {
+	// Generate UUID if not present
 	if body.UUID == "" {
 		body.UUID = helpers.UUID()
 	}
+	// Create the host in the database
 	result := db.Create(body)
+	// Check for errors during the creation
 	if result.Error != nil {
 		log.Printf("Error creating host: %v", result.Error)
-		return result.Error
+		return nil, result.Error
 	}
-
-	return nil
+	// Return the created host and nil error
+	return body, nil
 }
