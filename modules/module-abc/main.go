@@ -27,7 +27,7 @@ type UFWCommandPayload struct {
 
 func main() {
 	// Connect to NATS server
-	nc, err := nats.Connect(nats.DefaultURL)
+	nc, err := nats.Connect("nats://127.0.0.1:4223")
 	if err != nil {
 		log.Fatalf("Error connecting to NATS: %v", err)
 	}
@@ -46,7 +46,7 @@ func StartModule(nc *nats.Conn, moduleID string) {
 	// Subscribe to a method called "ping" for the module
 	nc.QueueSubscribe("module."+moduleID+".ping", "module_queue", func(m *nats.Msg) {
 		// Handle the method and return a response
-		response := fmt.Sprintf("Hello from %s, you said: %s", moduleID, string(m.Data))
+		response := fmt.Sprintf("PONG from: %s", ModuleID)
 		log.Printf("Received 'ping' method call with payload: %s", string(m.Data))
 		err := m.Respond([]byte(response))
 

@@ -12,6 +12,7 @@ import (
 	"github.com/NubeDev/flexy/common"
 	"github.com/NubeDev/flexy/routers"
 	"github.com/NubeDev/flexy/utils/casbin"
+	"github.com/NubeDev/flexy/utils/natsforwarder"
 	"github.com/NubeDev/flexy/utils/setting"
 	"github.com/gin-gonic/gin"
 	"github.com/nats-io/nats.go"
@@ -20,12 +21,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 )
 
 var globalUUID string
 var port int
+var natsModulePort int
 var useAuth bool
 
 func main() {
@@ -68,15 +71,16 @@ func main() {
 		MaxHeaderBytes: maxHeaderBytes,
 	}
 
-	// Initialize NATS connection
-	nc, err := setupNATS()
+	// Initialize NATS cloud connection
+	natsCloud, err := setupNATS("")
 	if err != nil {
-		log.Fatal().Msgf("error setting up NATS: %v", err)
+		log.Fatal().Msgf("error setting up NATS cloud: %v", err)
 	}
-	defer nc.Close()
-	natsRouter := natsrouter.New(nc)
+	defer natsCloud.Close()
+	natsRouterCloud := natsrouter.New(natsCloud)
 
-	go bootNats(globalUUID, natsRouter)
+	go bootNatsCloud(globalUUID, natsRouterCloud)
+	go natsForwarder(globalUUID, natsCloud, fmt.Sprintf("nats://127.0.0.1:%d", natsModulePort))
 
 	go func() {
 		err := server.ListenAndServe()
@@ -119,6 +123,7 @@ func cli() {
 
 	rootCmd.Flags().StringVar(&globalUUID, "uuid", "", "UUID for the edge device")
 	rootCmd.Flags().IntVar(&port, "port", 0, "HTTP server port")
+	rootCmd.Flags().IntVar(&natsModulePort, "natsModulePort", 4223, "nats module server port")
 	rootCmd.Flags().BoolVar(&useAuth, "auth", true, "use auth")
 
 	// Execute the root command
@@ -128,7 +133,7 @@ func cli() {
 
 }
 
-func bootNats(uuid string, natsRouter *natsrouter.NatsRouter) {
+func bootNatsCloud(uuid string, natsRouter *natsrouter.NatsRouter) {
 	log.Info().Msgf("starting edge device with UUID: %s", uuid)
 	// Register NATS routes
 	natsRouter.Handle(fmt.Sprintf("%s.", setting.NatsSettings.TopicPrefix)+uuid+".rql", natsapis.RQLHandler())
@@ -137,12 +142,47 @@ func bootNats(uuid string, natsRouter *natsrouter.NatsRouter) {
 	select {}
 }
 
-func setupNATS() (*nats.Conn, error) {
-	nc, err := nats.Connect(nats.DefaultURL)
+func natsForwarder(uuid string, sourceNATS *nats.Conn, targetURL string) {
+	// Connect to the NATS server for the source
+	defer sourceNATS.Close()
+	// Create a forwarder to forward requests to the target NATS server
+	timeout := 5 * time.Second
+	log.Info().Msgf("connected to NATS modules server: %s", targetURL)
+	forwarder, err := natsforwarder.NewForwarder(targetURL, timeout)
+	if err != nil {
+		log.Fatal().Msgf("Error creating NATS forwarder: %v", err)
+	}
+	defer forwarder.Close()
+	// hosts.abc.modules
+	subject := fmt.Sprintf("%s.%s.modules.*", setting.NatsSettings.TopicPrefix, uuid)
+	// Set up a handler to forward requests to the target subject
+	sourceNATS.QueueSubscribe(subject, "rql_queue", func(m *nats.Msg) {
+		// Split the subject based on "modules."
+		parts := strings.SplitN(m.Subject, "modules.", 2)
+		if len(parts) < 2 {
+			fmt.Println("No part found after 'modules.'")
+			return
+		}
+		nextPart := parts[1]
+		targetSubject := fmt.Sprintf("module.%s.command", nextPart)
+		log.Info().Msgf("module foward message subject: %s", targetSubject)
+		log.Info().Msgf("module foward message data: %s", string(m.Data))
+		forwarder.ForwardRequest(m, targetSubject)
+	})
+
+	// Keep the program running
+	select {}
+}
+
+func setupNATS(url string) (*nats.Conn, error) {
+	if url == "" {
+		url = nats.DefaultURL
+	}
+	nc, err := nats.Connect(url)
 	if err != nil {
 		log.Fatal().Msgf("error connecting to NATS: %v", err)
 		return nil, err
 	}
-	log.Info().Msg("connected to NATS")
+	log.Info().Msgf("connected to NATS: %s", url)
 	return nc, nil
 }
