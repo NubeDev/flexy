@@ -20,7 +20,6 @@ func NewForwarder(url string, timeout time.Duration) (*Forwarder, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to NATS server: %v", err)
 	}
-
 	return &Forwarder{
 		natsClient: nc,
 		timeout:    timeout,
