@@ -5,6 +5,7 @@ import (
 	"fmt"
 	hostService "github.com/NubeDev/flexy/app/services/v1/host"
 	systeminfo "github.com/NubeDev/flexy/utils/system"
+	"github.com/NubeDev/flexy/utils/systemctl"
 	jsonql "github.com/NubeIO/jql"
 	"github.com/dop251/goja"
 	"strings"
@@ -21,7 +22,8 @@ type RQL interface {
 }
 
 type EmbeddedServices struct {
-	Host *hostService.Host
+	Host    *hostService.Host
+	SystemD *systemctl.CTL
 }
 
 // New creates a new RuleEngine
@@ -30,6 +32,7 @@ func New(services *EmbeddedServices) RQL {
 		rules:    make(map[string]*Rule),
 		services: services,
 		system:   systeminfo.NewSystem(),
+		systemD:  services.SystemD,
 	}
 	return re
 }
@@ -145,6 +148,7 @@ type RuleEngine struct {
 	mu       sync.Mutex
 	services *EmbeddedServices
 	system   systeminfo.System
+	systemD  *systemctl.CTL
 }
 
 func (inst *RuleEngine) AddRule(name, script string, props PropertiesMap) error {
@@ -181,6 +185,10 @@ func (inst *RuleEngine) AddRule(name, script string, props PropertiesMap) error 
 		return err
 	}
 	err = vm.Set("system", inst.system)
+	if err != nil {
+		return err
+	}
+	err = vm.Set("ctl", inst.systemD)
 	if err != nil {
 		return err
 	}

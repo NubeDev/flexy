@@ -131,7 +131,7 @@ func cli() {
 func bootNats(uuid string, natsRouter *natsrouter.NatsRouter) {
 	log.Info().Msgf("starting edge device with UUID: %s", uuid)
 	// Register NATS routes
-	natsRouter.Handle(fmt.Sprintf("%s.", setting.NatsSettings.TopicPrefix)+uuid+".server", natsapis.ServerHandler())
+	natsRouter.Handle(fmt.Sprintf("%s.", setting.NatsSettings.TopicPrefix)+uuid+".rql", natsapis.RQLHandler())
 	natsRouter.Handle(fmt.Sprintf("%s.", setting.NatsSettings.TopicPrefix)+uuid+".ping", natsrouter.PingHandler(uuid))
 	// Keep the edge device running indefinitely
 	select {}

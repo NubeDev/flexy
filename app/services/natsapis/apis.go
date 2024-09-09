@@ -7,13 +7,10 @@ import (
 )
 
 type RequestBody struct {
-	Method   string `json:"method"`
-	Endpoint string `json:"endpoint"`
-	Body     string `json:"body"`
+	Script string `json:"script"`
 }
 
-// ServerHandler creates a handler for NATS messages.
-func ServerHandler() func(m *nats.Msg) {
+func RQLHandler() func(m *nats.Msg) {
 	return func(m *nats.Msg) {
 		var reqBody RequestBody
 		err := json.Unmarshal(m.Data, &reqBody)
@@ -23,7 +20,7 @@ func ServerHandler() func(m *nats.Msg) {
 			return
 		}
 
-		handlerFunc := rqlHandler(reqBody.Endpoint, reqBody.Method, reqBody.Body)
+		handlerFunc := rqlHandler(reqBody.Script)
 
 		if handlerFunc == nil {
 			m.Respond([]byte("Unknown endpoint or method"))
