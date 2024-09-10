@@ -1,11 +1,12 @@
 package code
 
 const (
-	SUCCESS       = 200
-	ERROR         = 500
-	InvalidParams = 400
-	TokenInvalid  = 401
-	UnknownError  = 900
+	SUCCESS        = 200
+	ERROR          = 500
+	InvalidParams  = 400
+	TokenInvalid   = 401
+	UnknownError   = 900
+	UnknownCommand = 902
 
 	ErrorAuthCheckTokenFail     = 20001
 	ErrorAuthCheckTokenTimeout  = 20002
@@ -22,6 +23,7 @@ var MsgFlags = map[int]string{
 	SUCCESS:                     "ok",
 	ERROR:                       "fail",
 	UnknownError:                "Unknown error",
+	UnknownCommand:              "Unknown command",
 	InvalidParams:               "Request parameter error",
 	TokenInvalid:                "Token parameter is invalid or does not exist",
 	ErrorAuthCheckTokenFail:     "Token authorization failed",

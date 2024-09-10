@@ -6,6 +6,7 @@ import (
 	"github.com/NubeDev/flexy/modules/module-abc/ufwcommand"
 	"github.com/nats-io/nats.go"
 	"log"
+	"time"
 )
 
 // ModuleID is a unique identifier for this module
@@ -88,6 +89,15 @@ func HandleUFWCommand(m *nats.Msg, body Body) error {
 		return err
 	}
 	switch subCommand {
+	case "time":
+		response := map[string]interface{}{
+			"code":    200,
+			"details": time.Now().Format(time.DateTime),
+		}
+		err := marshalAndRespond(m, response)
+		if err != nil {
+			return err
+		}
 	case "open":
 		err := handlePort(m, payloadMap, true)
 		if err != nil {
