@@ -23,6 +23,34 @@ Demo set up
 
 ```
 
+## downloads
+
+## nats server
+
+```
+https://nats.io/download/
+```
+
+The simplest way to just get the binary of a release of nats-server for your machine is to use the following shell command.
+
+For example to get the binary for version 2.10.14 you would use:
+
+```
+curl -sf https://binaries.nats.dev/nats-io/nats-server/v2@v2.10.14 | sh
+```
+
+## nats cli
+```
+https://github.com/nats-io/natscli
+```
+
+### Installation from the shell
+The following script will install the latest version of the nats cli on Linux and macOS:
+
+```
+curl -sf https://binaries.nats.dev/nats-io/natscli/nats@latest | sh
+```
+
 ## nats servers
 Start 2x nats servers 
 
