@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/NubeDev/flexy/app/services/natsrouter"
 	"github.com/NubeDev/flexy/utils/code"
 	"github.com/nats-io/nats.go"
 )
@@ -15,7 +16,8 @@ type Command struct {
 
 // Service struct to handle NATS and file operations
 type Service struct {
-	natsConn *nats.Conn
+	natsConn  *nats.Conn
+	natsStore *natsrouter.NatsRouter
 }
 
 // NewService initializes the NATS connection and returns the Service

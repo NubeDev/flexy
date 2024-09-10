@@ -11,14 +11,14 @@ import (
 // CreateObjectStore will create an object store.
 func (r *NatsRouter) CreateObjectStore(storeName string, config *nats.ObjectStoreConfig) error {
 	// Ensure the object store exists or create one
-	_, err := r.js.ObjectStore(storeName)
+	_, err := r.JetStreamContext.ObjectStore(storeName)
 	if err != nil {
 		if config == nil {
 			config = &nats.ObjectStoreConfig{
 				Bucket: storeName,
 			}
 		}
-		_, err = r.js.CreateObjectStore(config)
+		_, err = r.JetStreamContext.CreateObjectStore(config)
 		if err != nil {
 			return err
 		}
@@ -122,7 +122,7 @@ func (r *NatsRouter) GetStoreObjects(storeName string) ([]*nats.ObjectInfo, erro
 
 // GetStores returns the list of available object store names
 func (r *NatsRouter) GetStores() []string {
-	storeNamesChan := r.js.ObjectStoreNames()
+	storeNamesChan := r.JetStreamContext.ObjectStoreNames()
 
 	var stores []string
 	for store := range storeNamesChan {
@@ -134,7 +134,7 @@ func (r *NatsRouter) GetStores() []string {
 
 // GetStore returns the ObjectStore for a specific name
 func (r *NatsRouter) GetStore(name string) (nats.ObjectStore, error) {
-	store, err := r.js.ObjectStore(name)
+	store, err := r.JetStreamContext.ObjectStore(name)
 	if err != nil {
 		log.Printf("Error getting object store %s: %v", name, err)
 		return nil, err
@@ -182,7 +182,7 @@ func (r *NatsRouter) DeleteObject(storeName string, objectName string) error {
 
 // DropStore deletes the entire object store by name
 func (r *NatsRouter) DropStore(storeName string) error {
-	err := r.js.DeleteObjectStore(storeName)
+	err := r.JetStreamContext.DeleteObjectStore(storeName)
 	if err != nil {
 		log.Printf("Error dropping object store %s: %v", storeName, err)
 		return err

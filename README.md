@@ -109,3 +109,22 @@ get all the hosts via RQL
 ```
 ./nats req host.abc.flex.rql "{\"script\": \"ctl.SystemdStatus(\\\"mosquitto\\\")\"}"
 ```
+
+## using nats store
+
+### add an object to the store
+
+```
+./nats object put mystore /home/aidan/test.txt 
+```
+
+### list all the stores
+```
+./nats req "bios.abc.store" '{"command": "get_stores"}''
+```
+
+
+### get all objects from a store
+```
+./nats req "bios.abc.store" '{"command": "get_store_objects", "body": {"store": "mystore"}}'
+```

@@ -6,8 +6,8 @@ import (
 )
 
 type NatsRouter struct {
-	nc *nats.Conn
-	js nats.JetStreamContext
+	nc               *nats.Conn
+	JetStreamContext nats.JetStreamContext
 }
 
 // NatsHandlerFunc is the handler type for NATS messages.
@@ -21,7 +21,7 @@ func New(nc *nats.Conn) *NatsRouter {
 		log.Fatalf("Error initializing JetStream: %v", err)
 	}
 
-	return &NatsRouter{nc: nc, js: js}
+	return &NatsRouter{nc: nc, JetStreamContext: js}
 }
 
 // Handle registers a handler for a NATS subject

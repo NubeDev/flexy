@@ -16,6 +16,7 @@ import (
 // these are the bios commands. eg; install and app
 func (s *Service) StartService(globalUUID string) {
 	s.natsConn.Subscribe(fmt.Sprintf("bios.%s.command", globalUUID), s.HandleCommand)
+	s.natsConn.Subscribe(fmt.Sprintf("bios.%s.store", globalUUID), s.HandleStore)
 }
 
 // natsForwarder

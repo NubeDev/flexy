@@ -22,7 +22,7 @@ func TestGetObject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error creating JetStream context: %v", err)
 	}
-	router.js = js
+	router.JetStreamContext = js
 
 	// Define test object store and object name
 	storeName := "mystore"

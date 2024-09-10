@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/nats-io/nats.go"
+	"log"
 )
 
 const globalUUID = "abc"
@@ -15,6 +16,11 @@ func main() {
 	}
 	defer service.natsConn.Close()
 	go natsForwarder(globalUUID, service.natsConn, fmt.Sprintf("nats://127.0.0.1:%d", 4223))
+	err = service.natsStoreInit(service.natsConn)
+	if err != nil {
+		log.Fatal("failed to init nats-store")
+		return
+	}
 	fmt.Println("Service started...")
 	service.StartService(globalUUID)
 
