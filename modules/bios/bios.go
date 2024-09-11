@@ -62,6 +62,8 @@ func (s *Service) HandleCommand(m *nats.Msg) {
 	}
 
 	switch cmd.Command {
+	case "ping":
+		s.publish(m.Reply, "PONG", code.SUCCESS)
 	case "read_file":
 		path, ok := cmd.Body["path"].(string)
 		if !ok || path == "" {
