@@ -29,6 +29,10 @@ type PaginateStruct struct {
 	PageSize int
 }
 
+type Message struct {
+	Message string `json:"message"`
+}
+
 type BaseModel struct {
 	ID uint `gorm:"primary_key" json:"id"`
 	//UUID string `gorm:"primary_key" json:"uuid"`

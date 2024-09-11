@@ -22,6 +22,22 @@ func (Host) TableName() string {
 	return TablePrefix + "host"
 }
 
+func CreateHost(body *Host) (*Host, error) {
+	// Generate UUID if not present
+	if body.UUID == "" {
+		body.UUID = helpers.UUID()
+	}
+	// Create the host in the database
+	result := db.Create(body)
+	// Check for errors during the creation
+	if result.Error != nil {
+		log.Printf("Error creating host: %v", result.Error)
+		return nil, result.Error
+	}
+	// Return the created host and nil error
+	return body, nil
+}
+
 func GetHosts() []*Host {
 	var hosts []*Host
 	result := db.Model(&Host{}).Find(&hosts)
@@ -69,22 +85,6 @@ func UpdateHost(uuid string, body *Host) (*Host, error) {
 	}
 	// Return the updated host and nil error
 	return &host, nil
-}
-
-func CreateHost(body *Host) (*Host, error) {
-	// Generate UUID if not present
-	if body.UUID == "" {
-		body.UUID = helpers.UUID()
-	}
-	// Create the host in the database
-	result := db.Create(body)
-	// Check for errors during the creation
-	if result.Error != nil {
-		log.Printf("Error creating host: %v", result.Error)
-		return nil, result.Error
-	}
-	// Return the created host and nil error
-	return body, nil
 }
 
 func DeleteHost(uuid string) error {

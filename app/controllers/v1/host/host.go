@@ -90,10 +90,10 @@ func DeleteHost(c *gin.Context) {
 	uuid := c.Param("uuid")
 
 	// Call the service to delete the host
-	err := host.Delete(uuid)
+	resp, err := host.Delete(uuid)
 	if err != nil {
 		g.Response(http.StatusInternalServerError, code.ERROR, err.Error(), nil)
 		return
 	}
-	g.Response(http.StatusOK, code.SUCCESS, "Host deleted successfully", nil)
+	g.Response(http.StatusOK, code.SUCCESS, "Host deleted successfully", resp)
 }

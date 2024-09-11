@@ -96,18 +96,18 @@ func (inst *RuleEngine) RunAndDestroy(name, script string, props PropertiesMap) 
 	if err != nil {
 		return nil, err
 	}
-
 	rule, err := inst.GetRule(name)
 	if err != nil {
 		return nil, err
 	}
-
 	result, err := rule.Execute()
+	if err != nil {
+		return nil, err
+	}
 	err = inst.DeleteRule(name)
 	if err != nil {
 		return nil, err
 	}
-
 	return result, nil
 }
 

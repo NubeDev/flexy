@@ -63,11 +63,11 @@ func (inst *Host) Update(uuid string, body *Fields) (*model.Host, error) {
 	return host, nil
 }
 
-func (inst *Host) Delete(uuid string) error {
+func (inst *Host) Delete(uuid string) (*model.Message, error) {
 	err := model.DeleteHost(uuid)
 	if err != nil {
 		log.Printf("Error deleting host with UUID %s: %v", uuid, err)
-		return err
+		return nil, err
 	}
-	return nil
+	return &model.Message{Message: "deleted ok"}, nil
 }
