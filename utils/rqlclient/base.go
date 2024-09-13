@@ -13,23 +13,23 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-// RQLClient struct to hold the NATS connection
-type RQLClient struct {
+// Client struct to hold the NATS connection
+type Client struct {
 	natsClient *nats.Conn
 }
 
-// New initializes a new RQLClient
-func New(natsURL string) (*RQLClient, error) {
+// New initializes a new Client
+func New(natsURL string) (*Client, error) {
 	nc, err := nats.Connect(natsURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to NATS: %v", err)
 	}
-	return &RQLClient{natsClient: nc}, nil
+	return &Client{natsClient: nc}, nil
 }
 
 // sendNATSRequest is a reusable helper function to send a request to a NATS subject
 // and unmarshal the response.
-func (inst *RQLClient) sendNATSRequest(clientUUID, script string, timeout time.Duration) (*nats.Msg, error) {
+func (inst *Client) sendNATSRequest(clientUUID, script string, timeout time.Duration) (*nats.Msg, error) {
 	subject := "host." + clientUUID + ".flex.rql"
 	requestPayload := map[string]interface{}{
 		"script": script,
@@ -46,8 +46,86 @@ func (inst *RQLClient) sendNATSRequest(clientUUID, script string, timeout time.D
 	return msg, nil
 }
 
+// BiosInstallApp installs an app with the given name and version on the specified client
+func (inst *Client) BiosInstallApp(clientUUID, appName, version string, timeout time.Duration) (interface{}, error) {
+	installCmd := map[string]interface{}{
+		"command": "install_app",
+		"body": map[string]string{
+			"name":    appName,
+			"version": version,
+		},
+	}
+	requestData, err := json.Marshal(installCmd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal install command: %v", err)
+	}
+
+	request, err := inst.natsClient.Request(fmt.Sprintf("bios.%s.command", clientUUID), requestData, timeout)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %v", err)
+	}
+	var statusResp interface{}
+	err = json.Unmarshal(request.Data, &statusResp)
+	if err != nil {
+		return nil, fmt.Errorf("error: %v", string(request.Data))
+	}
+	return statusResp, err
+}
+
+// BiosUninstallApp uninstalls an app with the given name and version on the specified client
+func (inst *Client) BiosUninstallApp(clientUUID, appName, version string, timeout time.Duration) (interface{}, error) {
+	uninstallCmd := map[string]interface{}{
+		"command": "uninstall_app",
+		"body": map[string]string{
+			"name":    appName,
+			"version": version,
+		},
+	}
+	requestData, err := json.Marshal(uninstallCmd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal uninstall command: %v", err)
+	}
+
+	request, err := inst.natsClient.Request(fmt.Sprintf("bios.%s.command", clientUUID), requestData, timeout)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %v", err)
+	}
+	var statusResp interface{}
+	err = json.Unmarshal(request.Data, &statusResp)
+	if err != nil {
+		return nil, fmt.Errorf("error: %v", string(request.Data))
+	}
+	return statusResp, err
+}
+
+func (inst *Client) BiosInstalledApps(clientUUID string, timeout time.Duration) (interface{}, error) {
+	request, err := inst.natsClient.Request(fmt.Sprintf("bios.%s.command", clientUUID), []byte(`{"command": "list_installed_apps"}`), timeout)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %v", err)
+	}
+	var statusResp interface{}
+	err = json.Unmarshal(request.Data, &statusResp)
+	if err != nil {
+		return nil, fmt.Errorf("error: %v", string(request.Data))
+	}
+	return statusResp, err
+}
+
+func (inst *Client) BiosLibraryApps(clientUUID string, timeout time.Duration) (interface{}, error) {
+	request, err := inst.natsClient.Request(fmt.Sprintf("bios.%s.command", clientUUID), []byte(`{"command": "list_library_apps"}`), timeout)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %v", err)
+	}
+	var statusResp interface{}
+	err = json.Unmarshal(request.Data, &statusResp)
+	if err != nil {
+		return nil, fmt.Errorf("error: %v", string(request.Data))
+	}
+	return statusResp, err
+}
+
 // PingHostAllCore pings all hosts and collects responses from multiple clients.
-func (inst *RQLClient) PingHostAllCore() ([]string, error) {
+func (inst *Client) PingHostAllCore() ([]string, error) {
 	responseChan := make(chan string, 10) // buffer of 10, can be adjusted
 	var wg sync.WaitGroup
 	var mu sync.Mutex // Mutex to prevent race conditions
@@ -113,7 +191,7 @@ func (inst *RQLClient) PingHostAllCore() ([]string, error) {
 	return responses, nil
 }
 
-func (inst *RQLClient) ModuleHelp(clientUUID, moduleUUID string, args []string, timeout time.Duration) (interface{}, error) {
+func (inst *Client) ModuleHelp(clientUUID, moduleUUID string, args []string, timeout time.Duration) (interface{}, error) {
 	request, err := inst.natsClient.Request("subject", []byte(""), timeout)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %v", err)
@@ -127,7 +205,7 @@ func (inst *RQLClient) ModuleHelp(clientUUID, moduleUUID string, args []string, 
 }
 
 // SystemdStatus sends a request to get the systemd status of a unit
-func (inst *RQLClient) SystemdStatus(clientUUID, unit string, timeout time.Duration) (*commands.StatusResp, error) {
+func (inst *Client) SystemdStatus(clientUUID, unit string, timeout time.Duration) (*commands.StatusResp, error) {
 	script := fmt.Sprintf("ctl.SystemdStatus(\"%s\")", unit)
 	request, err := inst.sendNATSRequest(clientUUID, script, timeout)
 	if err != nil {
@@ -142,7 +220,7 @@ func (inst *RQLClient) SystemdStatus(clientUUID, unit string, timeout time.Durat
 	return statusResp, err
 }
 
-func (inst *RQLClient) GetHosts(clientUUID string, timeout time.Duration) ([]*model.Host, error) {
+func (inst *Client) GetHosts(clientUUID string, timeout time.Duration) ([]*model.Host, error) {
 	script := fmt.Sprintf("hosts.GetHosts()")
 	request, err := inst.sendNATSRequest(clientUUID, script, timeout)
 	if err != nil {
@@ -156,7 +234,7 @@ func (inst *RQLClient) GetHosts(clientUUID string, timeout time.Duration) ([]*mo
 	return statusResp, err
 }
 
-func (inst *RQLClient) GetHost(clientUUID, hostUUID string, timeout time.Duration) (*model.Host, error) {
+func (inst *Client) GetHost(clientUUID, hostUUID string, timeout time.Duration) (*model.Host, error) {
 	script := fmt.Sprintf("hosts.GetHost(\"%s\")", hostUUID)
 	request, err := inst.sendNATSRequest(clientUUID, script, timeout)
 	if err != nil {
@@ -170,7 +248,7 @@ func (inst *RQLClient) GetHost(clientUUID, hostUUID string, timeout time.Duratio
 	return statusResp, err
 }
 
-func (inst *RQLClient) DeleteHost(clientUUID, hostUUID string, timeout time.Duration) (interface{}, error) {
+func (inst *Client) DeleteHost(clientUUID, hostUUID string, timeout time.Duration) (interface{}, error) {
 	script := fmt.Sprintf("hosts.Delete(\"%s\")", hostUUID)
 	request, err := inst.sendNATSRequest(clientUUID, script, timeout)
 	if err != nil {
@@ -185,7 +263,7 @@ func (inst *RQLClient) DeleteHost(clientUUID, hostUUID string, timeout time.Dura
 }
 
 // CreateHost creates a host by passing hostService.Fields into the JavaScript script
-func (inst *RQLClient) CreateHost(clientUUID string, host *hostService.Fields, timeout time.Duration) (*model.Host, error) {
+func (inst *Client) CreateHost(clientUUID string, host *hostService.Fields, timeout time.Duration) (*model.Host, error) {
 	// Prepare the script with host details injected into it
 	script := fmt.Sprintf(`
 		let host = {

@@ -8,13 +8,8 @@ import (
 
 func main() {
 	var err error
-
-	libraryPath := "library" // Path where the zip files are stored
-	installPath := "install" // Path where the apps will be installed
-	backupPath := "backup"   // Path where backups will be stored
-
 	// Create a new AppManager instance
-	manager := appmanager.NewAppManager("/home/user/code/go/nube/flex/flexy/modules/bios/testbios/data/", libraryPath, installPath, backupPath, "tmp", "/etc/systemd/system")
+	manager := appmanager.NewAppManager("/home/user/code/go/nube/flex/flexy/modules/bios/testbios/data/", "/etc/systemd/system")
 
 	// Install the app
 	appName := "my-app"

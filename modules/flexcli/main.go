@@ -18,20 +18,21 @@ var (
 	clientUUID string
 	timeout    time.Duration
 	jsonInput  string // The JSON input as a string
-
+	appName    string
+	appVersion string
 )
 
 // rootCmd is the main command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "rql-client",
-	Short: "RQLClient CLI is a tool to interact with NATS services",
-	Long:  `This CLI tool allows you to interact with the NATS services using RQLClient library.`,
+	Short: "Client CLI is a tool to interact with NATS services",
+	Long:  `This CLI tool allows you to interact with the NATS services using Client library.`,
 }
 
-func runCommand(cmd *cobra.Command, args []string, execFunc func(client *rqlclient.RQLClient, args []string) error) {
+func runCommand(cmd *cobra.Command, args []string, execFunc func(client *rqlclient.Client, args []string) error) {
 	client, err := rqlclient.New(natsURL)
 	if err != nil {
-		log.Fatalf("failed to create RQLClient: %v", err)
+		log.Fatalf("failed to create Client: %v", err)
 	}
 
 	err = execFunc(client, args)
@@ -46,7 +47,7 @@ var systemdStatusCmd = &cobra.Command{
 	Short: "Get systemd status for a unit",
 	Args:  cobra.ExactArgs(1), // Expect exactly 1 argument (unit name)
 	Run: func(cmd *cobra.Command, args []string) {
-		runCommand(cmd, args, func(client *rqlclient.RQLClient, args []string) error {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
 			unit := args[0] // The unit is passed as a positional argument
 			status, err := client.SystemdStatus(clientUUID, unit, timeout)
 			if err != nil {
@@ -63,7 +64,7 @@ var getHostsCmd = &cobra.Command{
 	Use:   "get-hosts",
 	Short: "Retrieve all hosts",
 	Run: func(cmd *cobra.Command, args []string) {
-		runCommand(cmd, args, func(client *rqlclient.RQLClient, args []string) error {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
 			resp, err := client.GetHosts(clientUUID, timeout)
 			if err != nil {
 				return err
@@ -84,7 +85,7 @@ var getHostCmd = &cobra.Command{
 	Short: "Retrieve details of a specific host",
 	Args:  cobra.ExactArgs(1), // Expect exactly 1 argument (host UUID)
 	Run: func(cmd *cobra.Command, args []string) {
-		runCommand(cmd, args, func(client *rqlclient.RQLClient, args []string) error {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
 			hostUUID := args[0] // The host UUID is passed as a positional argument
 			resp, err := client.GetHost(clientUUID, hostUUID, timeout)
 			if err != nil {
@@ -101,7 +102,7 @@ var deleteHostCmd = &cobra.Command{
 	Short: "Delete a host via its uuid",
 	Args:  cobra.ExactArgs(1), // Expect exactly 1 argument (host UUID)
 	Run: func(cmd *cobra.Command, args []string) {
-		runCommand(cmd, args, func(client *rqlclient.RQLClient, args []string) error {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
 			hostUUID := args[0] // The host UUID is passed as a positional argument
 			resp, err := client.DeleteHost(clientUUID, hostUUID, timeout)
 			if err != nil {
@@ -118,7 +119,7 @@ var createHostCmd = &cobra.Command{
 	Short: "Create a host with the provided JSON data",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		runCommand(cmd, args, func(client *rqlclient.RQLClient, args []string) error {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
 			// Parse the JSON input into the Fields struct
 			var fields *hostService.Fields
 			err := json.Unmarshal([]byte(jsonInput), &fields)
@@ -142,8 +143,68 @@ var modulesPing = &cobra.Command{
 	Use:   "ping-all-modules",
 	Short: "Ping all the modules",
 	Run: func(cmd *cobra.Command, args []string) {
-		runCommand(cmd, args, func(client *rqlclient.RQLClient, args []string) error {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
 			resp, err := client.PingHostAllCore()
+			if err != nil {
+				return err
+			}
+			pprint.PrintJSON(resp)
+			return nil
+		})
+	},
+}
+
+var appInstall = &cobra.Command{
+	Use:   "apps-install",
+	Short: "Install an app",
+	Run: func(cmd *cobra.Command, args []string) {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
+			resp, err := client.BiosInstallApp(clientUUID, appName, appVersion, timeout)
+			if err != nil {
+				return err
+			}
+			pprint.PrintJSON(resp)
+			return nil
+		})
+	},
+}
+
+var appUninstall = &cobra.Command{
+	Use:   "apps-uninstall",
+	Short: "Uninstall an app",
+	Run: func(cmd *cobra.Command, args []string) {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
+			resp, err := client.BiosUninstallApp(clientUUID, appName, appVersion, timeout)
+			if err != nil {
+				return err
+			}
+			pprint.PrintJSON(resp)
+			return nil
+		})
+	},
+}
+
+var appInstalled = &cobra.Command{
+	Use:   "apps-installed",
+	Short: "List all apps that are installed",
+	Run: func(cmd *cobra.Command, args []string) {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
+			resp, err := client.BiosInstalledApps(clientUUID, timeout)
+			if err != nil {
+				return err
+			}
+			pprint.PrintJSON(resp)
+			return nil
+		})
+	},
+}
+
+var appList = &cobra.Command{
+	Use:   "apps-list",
+	Short: "List all available apps from the library that can be installed",
+	Run: func(cmd *cobra.Command, args []string) {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
+			resp, err := client.BiosLibraryApps(clientUUID, timeout)
 			if err != nil {
 				return err
 			}
@@ -162,6 +223,13 @@ func init() {
 
 	createHostCmd.Flags().StringVarP(&jsonInput, "json", "j", "", "JSON input")
 	createHostCmd.MarkFlagRequired("json")
+
+	rootCmd.PersistentFlags().StringVarP(&appName, "name", "n", "", "name")
+	//rootCmd.MarkPersistentFlagRequired("name")
+
+	rootCmd.PersistentFlags().StringVarP(&appVersion, "version", "v", "", "version")
+	//rootCmd.MarkPersistentFlagRequired("version")
+
 	// Add createHostCmd as a subcommand
 	rootCmd.AddCommand(createHostCmd)
 
@@ -172,6 +240,11 @@ func init() {
 	rootCmd.AddCommand(createHostCmd)
 	rootCmd.AddCommand(deleteHostCmd)
 	rootCmd.AddCommand(modulesPing)
+
+	rootCmd.AddCommand(appInstall)
+	rootCmd.AddCommand(appUninstall)
+	rootCmd.AddCommand(appList)
+	rootCmd.AddCommand(appInstalled)
 
 }
 

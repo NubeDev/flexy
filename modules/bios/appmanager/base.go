@@ -2,6 +2,7 @@ package appmanager
 
 import (
 	"archive/zip"
+	"errors"
 	"fmt"
 	"github.com/NubeDev/flexy/utils/execute/commands"
 	"io"
@@ -22,15 +23,25 @@ type AppManager struct {
 	systemctlService *commands.SystemctlService
 }
 
-// Apps struct to hold application details
-type Apps struct {
+// App struct to hold application details
+type App struct {
 	Path    string `json:"path,omitempty"`
-	AppName string `json:"appName"`
+	Name    string `json:"name"`
 	Version string `json:"version"`
 }
 
 // NewAppManager creates a new AppManager instance
-func NewAppManager(rootPath, libraryPath, installPath, backupPath, tmpPath, systemPath string) *AppManager {
+func NewAppManager(rootPath, systemPath string) *AppManager {
+	var libraryPath = "library"
+	var installPath = "install"
+	var backupPath = "backup"
+	var tmpPath = "tmp"
+	if rootPath == "" {
+		rootPath = "data"
+	}
+	if systemPath == "" {
+		systemPath = "/etc/systemd/system"
+	}
 	return &AppManager{
 		LibraryPath: fmt.Sprintf("%s/%s", rootPath, libraryPath),
 		InstallPath: fmt.Sprintf("%s/%s", rootPath, installPath),
@@ -41,11 +52,11 @@ func NewAppManager(rootPath, libraryPath, installPath, backupPath, tmpPath, syst
 	}
 }
 
-func (inst *AppManager) ListLibraryApps() ([]*Apps, error) {
+func (inst *AppManager) ListLibraryApps() ([]*App, error) {
 	return getAppsFromDir(inst.LibraryPath)
 }
 
-func getAppsFromDir(dir string) ([]*Apps, error) {
+func getAppsFromDir(dir string) ([]*App, error) {
 	// Read the directory contents
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
@@ -53,7 +64,7 @@ func getAppsFromDir(dir string) ([]*Apps, error) {
 	}
 	// Regex to capture version strings with "v" prefix and additional qualifiers (e.g., rc, beta, etc.)
 	versionRegex := regexp.MustCompile(`v?\d+(\.\d+)*([.-][a-zA-Z0-9]+)*`)
-	var apps []*Apps
+	var apps []*App
 	for _, file := range files {
 		if filepath.Ext(file.Name()) == ".zip" {
 			fullPath := filepath.Join(dir, file.Name())
@@ -66,9 +77,9 @@ func getAppsFromDir(dir string) ([]*Apps, error) {
 				verStr = strings.Trim(verStr, ".zip")                        // Clean up extra characters
 
 				// Add the app to the list
-				apps = append(apps, &Apps{
+				apps = append(apps, &App{
 					Path:    fullPath,
-					AppName: appName,
+					Name:    appName,
 					Version: verStr,
 				})
 			}
@@ -78,8 +89,8 @@ func getAppsFromDir(dir string) ([]*Apps, error) {
 	return apps, nil
 }
 
-func (inst *AppManager) ListInstalledApps() ([]*Apps, error) {
-	var apps []*Apps
+func (inst *AppManager) ListInstalledApps() ([]*App, error) {
+	var apps []*App
 
 	// Read the contents of the install directory
 	files, err := os.ReadDir(inst.InstallPath)
@@ -99,8 +110,8 @@ func (inst *AppManager) ListInstalledApps() ([]*Apps, error) {
 			// Loop through the versions
 			for _, versionDir := range versions {
 				if versionDir.IsDir() {
-					apps = append(apps, &Apps{
-						AppName: appName,
+					apps = append(apps, &App{
+						Name:    appName,
 						Version: versionDir.Name(),
 					})
 				}
@@ -112,7 +123,13 @@ func (inst *AppManager) ListInstalledApps() ([]*Apps, error) {
 }
 
 // Install installs the specified app version
-func (inst *AppManager) Install(appName, version string) error {
+func (inst *AppManager) Install(app *App) error {
+	if app == nil {
+		return errors.New("app can not bre empty")
+	}
+	var appName = app.Name
+	var version = app.Version
+
 	zipFilePath := filepath.Join(inst.LibraryPath, fmt.Sprintf("%s-%s.zip", appName, version))
 	installPath := filepath.Join(inst.InstallPath, appName, version)
 
@@ -146,7 +163,13 @@ func (inst *AppManager) Install(appName, version string) error {
 }
 
 // Uninstall uninstalls the specified app version
-func (inst *AppManager) Uninstall(appName, version string) error {
+func (inst *AppManager) Uninstall(app *App) error {
+	if app == nil {
+		return errors.New("app can not bre empty")
+	}
+	var appName = app.Name
+	var version = app.Version
+
 	installPath := filepath.Join(inst.InstallPath, appName, version)
 	backupPath := filepath.Join(inst.BackupPath, appName, version)
 
@@ -160,12 +183,17 @@ func (inst *AppManager) Uninstall(appName, version string) error {
 		return err
 	}
 
-	// Step 3: Backup the app
+	// Step 3: Delete the systemd service file
+	if err := inst.deleteSystemdService(appName); err != nil {
+		return fmt.Errorf("failed to delete systemd service file: %w", err)
+	}
+
+	// Step 4: Backup the app
 	if err := inst.backupApp(installPath, backupPath); err != nil {
 		return fmt.Errorf("failed to backup app: %w", err)
 	}
 
-	// Step 4: Delete the app from the install directory
+	// Step 5: Delete the app from the install directory
 	if err := os.RemoveAll(installPath); err != nil {
 		return fmt.Errorf("failed to delete app: %w", err)
 	}
@@ -177,6 +205,24 @@ func (inst *AppManager) Uninstall(appName, version string) error {
 func (inst *AppManager) stopAndRemoveOldApp(appName string) error {
 	// Stop and remove the old version of the app
 	return inst.stopAndDisableService(appName)
+}
+
+// deleteSystemdService deletes the systemd service file for the app
+func (inst *AppManager) deleteSystemdService(appName string) error {
+	serviceFilePath := filepath.Join(inst.SystemPath, fmt.Sprintf("%s.service", appName))
+	if _, err := os.Stat(serviceFilePath); err == nil {
+		// The service file exists, attempt to delete it
+		if err := os.Remove(serviceFilePath); err != nil {
+			return fmt.Errorf("failed to delete service file: %w", err)
+		}
+		fmt.Printf("Deleted systemd service file: %s\n", serviceFilePath)
+	} else if os.IsNotExist(err) {
+		// Service file does not exist, nothing to delete
+		fmt.Printf("Systemd service file %s does not exist, skipping deletion\n", serviceFilePath)
+	} else {
+		return err
+	}
+	return nil
 }
 
 // stopAndDisableService stops and disables the systemd service for the app

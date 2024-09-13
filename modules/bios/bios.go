@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/NubeDev/flexy/app/services/natsrouter"
+	"github.com/NubeDev/flexy/modules/bios/appmanager"
 	"github.com/NubeDev/flexy/utils/code"
 	"github.com/NubeDev/flexy/utils/systemctl"
 	"github.com/nats-io/nats.go"
@@ -17,18 +18,23 @@ type Command struct {
 
 // Service struct to handle NATS and file operations
 type Service struct {
-	natsConn  *nats.Conn
-	natsStore *natsrouter.NatsRouter
-	systemD   *systemctl.CTL
+	natsConn   *nats.Conn
+	natsStore  *natsrouter.NatsRouter
+	systemD    *systemctl.CTL
+	appManager *appmanager.AppManager
 }
 
 // NewService initializes the NATS connection and returns the Service
-func NewService(natsURL string) (*Service, error) {
+func NewService(natsURL, dataPath, systemPath string) (*Service, error) {
 	nc, err := nats.Connect(natsURL)
 	if err != nil {
 		return nil, err
 	}
-	return &Service{natsConn: nc, systemD: systemctl.New()}, nil
+	return &Service{
+		natsConn:   nc,
+		systemD:    systemctl.New(),
+		appManager: appmanager.NewAppManager(dataPath, systemPath),
+	}, nil
 }
 
 // Common error handling method
@@ -66,6 +72,53 @@ func (s *Service) HandleCommand(m *nats.Msg) {
 	switch cmd.Command {
 	case "ping":
 		s.publish(m.Reply, "PONG", code.SUCCESS)
+	case "list_library_apps":
+		apps, err := s.appManager.ListLibraryApps()
+		if err != nil {
+			s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error listing library apps: %v", err))
+		} else {
+			respJSON, _ := json.Marshal(apps)
+			s.publish(m.Reply, string(respJSON), code.SUCCESS)
+		}
+
+	case "list_installed_apps":
+		apps, err := s.appManager.ListInstalledApps()
+		if err != nil {
+			s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error listing installed apps: %v", err))
+		} else {
+			respJSON, _ := json.Marshal(apps)
+			s.publish(m.Reply, string(respJSON), code.SUCCESS)
+		}
+
+	case "install_app":
+		appName, ok := cmd.Body["name"].(string)
+		version, versionOk := cmd.Body["version"].(string)
+		if !ok || !versionOk || appName == "" || version == "" {
+			s.handleError(m.Reply, code.InvalidParams, "'name' and 'version' are required for install_app")
+			return
+		}
+		app := &appmanager.App{Name: appName, Version: version}
+		err := s.appManager.Install(app)
+		if err != nil {
+			s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error installing app: %v", err))
+		} else {
+			s.publish(m.Reply, fmt.Sprintf("App %s version %s installed", appName, version), code.SUCCESS)
+		}
+
+	case "uninstall_app":
+		appName, ok := cmd.Body["name"].(string)
+		version, versionOk := cmd.Body["version"].(string)
+		if !ok || !versionOk || appName == "" || version == "" {
+			s.handleError(m.Reply, code.InvalidParams, "'name' and 'version' are required for uninstall_app")
+			return
+		}
+		app := &appmanager.App{Name: appName, Version: version}
+		err := s.appManager.Uninstall(app)
+		if err != nil {
+			s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error uninstalling app: %v", err))
+		} else {
+			s.publish(m.Reply, fmt.Sprintf("App %s version %s uninstalled", appName, version), code.SUCCESS)
+		}
 	case "read_file":
 		path, ok := cmd.Body["path"].(string)
 		if !ok || path == "" {
