@@ -138,9 +138,24 @@ var createHostCmd = &cobra.Command{
 	},
 }
 
+var modulesPing = &cobra.Command{
+	Use:   "ping-all-modules",
+	Short: "Ping all the modules",
+	Run: func(cmd *cobra.Command, args []string) {
+		runCommand(cmd, args, func(client *rqlclient.RQLClient, args []string) error {
+			resp, err := client.PingHostAllCore()
+			if err != nil {
+				return err
+			}
+			pprint.PrintJSON(resp)
+			return nil
+		})
+	},
+}
+
 func init() {
 	// Define persistent flags common to all commands
-	rootCmd.PersistentFlags().StringVarP(&natsURL, "nats-url", "n", "nats://localhost:4222", "NATS server URL")
+	rootCmd.PersistentFlags().StringVarP(&natsURL, "url", "u", "nats://localhost:4222", "NATS server URL")
 	rootCmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", 5*time.Second, "Request timeout")
 	rootCmd.PersistentFlags().StringVarP(&clientUUID, "client-uuid", "c", "", "Client UUID")
 	rootCmd.MarkPersistentFlagRequired("client-uuid")
@@ -156,6 +171,7 @@ func init() {
 	rootCmd.AddCommand(getHostCmd)
 	rootCmd.AddCommand(createHostCmd)
 	rootCmd.AddCommand(deleteHostCmd)
+	rootCmd.AddCommand(modulesPing)
 
 }
 

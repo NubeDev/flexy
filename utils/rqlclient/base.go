@@ -5,6 +5,8 @@ import (
 	"fmt"
 	model "github.com/NubeDev/flexy/app/models"
 	hostService "github.com/NubeDev/flexy/app/services/v1/host"
+	"log"
+	"sync"
 	"time"
 
 	"github.com/NubeDev/flexy/utils/execute/commands"
@@ -42,6 +44,86 @@ func (inst *RQLClient) sendNATSRequest(clientUUID, script string, timeout time.D
 	}
 
 	return msg, nil
+}
+
+// PingHostAllCore pings all hosts and collects responses from multiple clients.
+func (inst *RQLClient) PingHostAllCore() ([]string, error) {
+	responseChan := make(chan string, 10) // buffer of 10, can be adjusted
+	var wg sync.WaitGroup
+	var mu sync.Mutex // Mutex to prevent race conditions
+
+	// Subscribe to the shared response subject (module.global.response)
+	sub, err := inst.natsClient.SubscribeSync("module.global.response")
+	if err != nil {
+		return nil, err
+	}
+	defer sub.Unsubscribe()
+
+	// Publish the request to the shared subject (module.global)
+	err = inst.natsClient.Publish("module.global.ping", []byte("hello"))
+	if err != nil {
+		return nil, err
+	}
+
+	// Set a timeout for collecting responses
+	timeout := time.NewTimer(5 * time.Second)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-timeout.C:
+				return
+			default:
+				// Wait for the next message with a short timeout
+				msg, err := sub.NextMsg(1 * time.Second)
+				if err == nats.ErrTimeout {
+					continue
+				}
+				if err != nil {
+					log.Println("Error receiving message:", err)
+					return
+				}
+				if msg != nil && len(msg.Data) > 0 {
+					// Lock access to the response slice to prevent race condition
+					mu.Lock()
+					responseChan <- string(msg.Data)
+					mu.Unlock()
+				}
+			}
+		}
+	}()
+
+	go func() {
+		wg.Wait()
+		close(responseChan)
+	}()
+
+	// Collect the responses
+	var responses []string
+	for res := range responseChan {
+		if res != "" {
+			mu.Lock() // Lock the slice while appending to prevent race condition
+			responses = append(responses, res)
+			mu.Unlock()
+		}
+	}
+
+	return responses, nil
+}
+
+func (inst *RQLClient) ModuleHelp(clientUUID, moduleUUID string, args []string, timeout time.Duration) (interface{}, error) {
+	request, err := inst.natsClient.Request("subject", []byte(""), timeout)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %v", err)
+	}
+	var statusResp interface{}
+	err = json.Unmarshal(request.Data, &statusResp)
+	if err != nil {
+		return nil, fmt.Errorf("error: %v", string(request.Data))
+	}
+	return statusResp, err
 }
 
 // SystemdStatus sends a request to get the systemd status of a unit

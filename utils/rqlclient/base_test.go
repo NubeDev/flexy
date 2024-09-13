@@ -1,22 +1,24 @@
 package rqlclient
 
 import (
-	"fmt"
 	"github.com/NubeDev/flexy/utils/helpers/pprint"
-	"github.com/nats-io/nats.go"
 	"testing"
-	"time"
 )
 
 func TestNew(t *testing.T) {
-	client, err := New(nats.DefaultURL)
+	client, err := New("nats://127.0.0.1:4223")
 	if err != nil {
 		return
 	}
-	status, err := client.SystemdStatus("abc", "mosquitto", time.Second)
+	//status, err := client.SystemdStatus("abc", "mosquitto", time.Second)
+	//if err != nil {
+	//	fmt.Println(err)
+	//	return
+	//}
+	//pprint.PrintJSON(status)
+	core, err := client.PingHostAllCore()
 	if err != nil {
-		fmt.Println(err)
 		return
 	}
-	pprint.PrintJSON(status)
+	pprint.PrintJSON(core)
 }

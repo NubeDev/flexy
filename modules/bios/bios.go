@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/NubeDev/flexy/app/services/natsrouter"
 	"github.com/NubeDev/flexy/utils/code"
+	"github.com/NubeDev/flexy/utils/systemctl"
 	"github.com/nats-io/nats.go"
 )
 
@@ -18,6 +19,7 @@ type Command struct {
 type Service struct {
 	natsConn  *nats.Conn
 	natsStore *natsrouter.NatsRouter
+	systemD   *systemctl.CTL
 }
 
 // NewService initializes the NATS connection and returns the Service
@@ -26,7 +28,7 @@ func NewService(natsURL string) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Service{natsConn: nc}, nil
+	return &Service{natsConn: nc, systemD: systemctl.New()}, nil
 }
 
 // Common error handling method
