@@ -47,7 +47,7 @@ Demo set up
 ### Cloud NATS to Edge BIOS
 - <global_uuid>.get.system.ping
 - <global_uuid>.get.systemctl.status '{ "service": "nubeio-rubix-os" }'
-
+- <global_uuid>.post.apps.install '{ "name": "nubeio-rubix-os", "version":"v1.1" }'
 
 # downloads
 

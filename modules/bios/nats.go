@@ -12,7 +12,19 @@ func (inst *Service) StartService(globalUUID string) error {
 	if err != nil {
 		return err
 	}
+	_, err = inst.natsConn.Subscribe(inst.biosSubjectBuilder.BuildSubject("get", "apps", "installed"), inst.handleListInstalledApps)
+	if err != nil {
+		return err
+	}
 	_, err = inst.natsConn.Subscribe(inst.biosSubjectBuilder.BuildSubject("get", "apps", "library"), inst.handleListLibraryApps)
+	if err != nil {
+		return err
+	}
+	_, err = inst.natsConn.Subscribe(inst.biosSubjectBuilder.BuildSubject("post", "apps", "install"), inst.handleInstallApp)
+	if err != nil {
+		return err
+	}
+	_, err = inst.natsConn.Subscribe(inst.biosSubjectBuilder.BuildSubject("post", "apps", "uninstall"), inst.handleUninstallApp)
 	if err != nil {
 		return err
 	}

@@ -9,12 +9,18 @@ import (
 	"github.com/NubeDev/flexy/utils/subjects"
 	"github.com/NubeDev/flexy/utils/systemctl"
 	"github.com/nats-io/nats.go"
+	"github.com/rs/zerolog/log"
 )
 
 // Command structure to decode the incoming JSON
 type Command struct {
 	Command string                 `json:"command"`
 	Body    map[string]interface{} `json:"body"`
+}
+
+type App struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
 }
 
 // Service struct to handle NATS and file operations
@@ -36,6 +42,7 @@ func NewService(natsURL, dataPath, systemPath string) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Info().Msgf("start bios NATS server: %v", natsURL)
 	return &Service{
 		natsConn:           nc,
 		systemD:            systemctl.New(),
@@ -66,13 +73,13 @@ func (inst *Service) publish(reply string, content string, responseCode int) {
 	inst.natsConn.Publish(reply, respJSON)
 }
 
-// GetCommandValue extracts a value from the command body by key
-func (inst *Service) GetCommandValue(cmd *Command, key string) (string, error) {
-	value, ok := cmd.Body[key].(string)
-	if !ok || value == "" {
-		return "", fmt.Errorf("'%s' is required and must be a non-empty string", key)
+// DecodeApps decodes the incoming NATS message into a Command struct
+func (inst *Service) DecodeApps(m *nats.Msg) (*App, error) {
+	var cmd App
+	if err := json.Unmarshal(m.Data, &cmd); err != nil {
+		return nil, fmt.Errorf("invalid JSON format: %v", err)
 	}
-	return value, nil
+	return &cmd, nil
 }
 
 // DecodeCommand decodes the incoming NATS message into a Command struct
@@ -84,39 +91,12 @@ func (inst *Service) DecodeCommand(m *nats.Msg) (*Command, error) {
 	return &cmd, nil
 }
 
-// HandleCommand processes incoming JSON commands
-func (inst *Service) HandleCommand(m *nats.Msg) {
-	cmd, err := inst.DecodeCommand(m)
-	if err != nil {
-		inst.handleError(m.Reply, code.ERROR, err.Error())
-		return
+func (inst *Service) GetCommandValue(cmd *Command, key string) (string, error) {
+	value, ok := cmd.Body[key].(string)
+	if !ok || value == "" {
+		return "", fmt.Errorf("'%s' is required and must be a non-empty string", key)
 	}
-
-	// Call the appropriate method based on the command
-	switch cmd.Command {
-	case "ping":
-		inst.handlePing(m)
-	case "list_library_apps":
-		inst.handleListLibraryApps(m)
-	case "list_installed_apps":
-		inst.handleListInstalledApps(m)
-	case "install_app":
-		inst.handleInstallApp(m)
-	case "uninstall_app":
-		inst.handleUninstallApp(m)
-	case "read_file":
-		inst.handleReadFile(m)
-	case "make_dir":
-		inst.handleMakeDir(m)
-	case "delete_dir":
-		inst.handleDeleteDir(m)
-	case "zip_folder":
-		inst.handleZipFolder(m)
-	case "unzip_folder":
-		inst.handleUnzipFolder(m)
-	default:
-		inst.handleError(m.Reply, code.UnknownCommand, "Unknown command")
-	}
+	return value, nil
 }
 
 // Individual command handlers
@@ -146,58 +126,56 @@ func (inst *Service) handleListInstalledApps(m *nats.Msg) {
 }
 
 func (inst *Service) handleInstallApp(m *nats.Msg) {
-	cmd, err := inst.DecodeCommand(m)
-	if err != nil {
+	decoded, err := inst.DecodeApps(m)
+	if decoded == nil || err != nil {
+		if decoded == nil {
+			inst.handleError(m.Reply, code.ERROR, "failed to parse json")
+			return
+		}
 		inst.handleError(m.Reply, code.ERROR, err.Error())
 		return
 	}
-
-	appName, err := inst.GetCommandValue(cmd, "name")
-	if err != nil {
-		inst.handleError(m.Reply, code.InvalidParams, err.Error())
+	if decoded.Name == "" {
+		inst.handleError(m.Reply, code.InvalidParams, "app name is required")
 		return
 	}
-
-	version, err := inst.GetCommandValue(cmd, "version")
-	if err != nil {
-		inst.handleError(m.Reply, code.InvalidParams, err.Error())
+	if decoded.Version == "" {
+		inst.handleError(m.Reply, code.InvalidParams, "app version is required")
 		return
 	}
-
-	app := &appmanager.App{Name: appName, Version: version}
+	app := &appmanager.App{Name: decoded.Name, Version: decoded.Version}
 	err = inst.appManager.Install(app)
 	if err != nil {
 		inst.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error installing app: %v", err))
 	} else {
-		inst.publish(m.Reply, fmt.Sprintf("App %s version %s installed", appName, version), code.SUCCESS)
+		inst.publish(m.Reply, fmt.Sprintf("App %s version %s installed", decoded.Name, decoded.Version), code.SUCCESS)
 	}
 }
 
 func (inst *Service) handleUninstallApp(m *nats.Msg) {
-	cmd, err := inst.DecodeCommand(m)
-	if err != nil {
+	decoded, err := inst.DecodeApps(m)
+	if decoded == nil || err != nil {
+		if decoded == nil {
+			inst.handleError(m.Reply, code.ERROR, "failed to parse json")
+			return
+		}
 		inst.handleError(m.Reply, code.ERROR, err.Error())
 		return
 	}
-
-	appName, err := inst.GetCommandValue(cmd, "name")
-	if err != nil {
-		inst.handleError(m.Reply, code.InvalidParams, err.Error())
+	if decoded.Name == "" {
+		inst.handleError(m.Reply, code.InvalidParams, "app name is required")
 		return
 	}
-
-	version, err := inst.GetCommandValue(cmd, "version")
-	if err != nil {
-		inst.handleError(m.Reply, code.InvalidParams, err.Error())
+	if decoded.Version == "" {
+		inst.handleError(m.Reply, code.InvalidParams, "app version is required")
 		return
 	}
-
-	app := &appmanager.App{Name: appName, Version: version}
+	app := &appmanager.App{Name: decoded.Name, Version: decoded.Version}
 	err = inst.appManager.Uninstall(app)
 	if err != nil {
 		inst.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error uninstalling app: %v", err))
 	} else {
-		inst.publish(m.Reply, fmt.Sprintf("App %s version %s uninstalled", appName, version), code.SUCCESS)
+		inst.publish(m.Reply, fmt.Sprintf("App %s version %s uninstalled", decoded.Name, decoded.Version), code.SUCCESS)
 	}
 }
 

@@ -15,11 +15,9 @@ import (
 
 var (
 	natsURL    string
-	clientUUID string
+	globalUUID string
 	timeout    time.Duration
 	jsonInput  string // The JSON input as a string
-	appName    string
-	appVersion string
 )
 
 // rootCmd is the main command when called without any subcommands
@@ -30,7 +28,7 @@ var rootCmd = &cobra.Command{
 }
 
 func runCommand(cmd *cobra.Command, args []string, execFunc func(client *rqlclient.Client, args []string) error) {
-	client, err := rqlclient.New(natsURL)
+	client, err := rqlclient.New(natsURL, globalUUID)
 	if err != nil {
 		log.Fatalf("failed to create Client: %v", err)
 	}
@@ -49,7 +47,7 @@ var systemdStatusCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
 			unit := args[0] // The unit is passed as a positional argument
-			status, err := client.SystemdStatus(clientUUID, unit, timeout)
+			status, err := client.SystemdStatus(globalUUID, unit, timeout)
 			if err != nil {
 				return err
 			}
@@ -65,7 +63,7 @@ var getHostsCmd = &cobra.Command{
 	Short: "Retrieve all hosts",
 	Run: func(cmd *cobra.Command, args []string) {
 		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
-			resp, err := client.GetHosts(clientUUID, timeout)
+			resp, err := client.GetHosts(globalUUID, timeout)
 			if err != nil {
 				return err
 			}
@@ -87,7 +85,7 @@ var getHostCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
 			hostUUID := args[0] // The host UUID is passed as a positional argument
-			resp, err := client.GetHost(clientUUID, hostUUID, timeout)
+			resp, err := client.GetHost(globalUUID, hostUUID, timeout)
 			if err != nil {
 				return err
 			}
@@ -104,7 +102,7 @@ var deleteHostCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
 			hostUUID := args[0] // The host UUID is passed as a positional argument
-			resp, err := client.DeleteHost(clientUUID, hostUUID, timeout)
+			resp, err := client.DeleteHost(globalUUID, hostUUID, timeout)
 			if err != nil {
 				return err
 			}
@@ -129,7 +127,7 @@ var createHostCmd = &cobra.Command{
 			if fields == nil {
 				return fmt.Errorf("fields are empty: %v", err)
 			}
-			resp, err := client.CreateHost(clientUUID, fields, timeout)
+			resp, err := client.CreateHost(globalUUID, fields, timeout)
 			if err != nil {
 				return err
 			}
@@ -159,7 +157,12 @@ var appInstall = &cobra.Command{
 	Short: "Install an app",
 	Run: func(cmd *cobra.Command, args []string) {
 		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
-			resp, err := client.BiosInstallApp(clientUUID, appName, appVersion, timeout)
+			if len(args) < 2 {
+				return fmt.Errorf("not enough arguments: appName and appVersion are required")
+			}
+			appName := args[0]
+			appVersion := args[1]
+			resp, err := client.BiosInstallApp(appName, appVersion, timeout)
 			if err != nil {
 				return err
 			}
@@ -174,7 +177,12 @@ var appUninstall = &cobra.Command{
 	Short: "Uninstall an app",
 	Run: func(cmd *cobra.Command, args []string) {
 		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
-			resp, err := client.BiosUninstallApp(clientUUID, appName, appVersion, timeout)
+			if len(args) < 2 {
+				return fmt.Errorf("not enough arguments: appName and appVersion are required")
+			}
+			appName := args[0]
+			appVersion := args[1]
+			resp, err := client.BiosUninstallApp(appName, appVersion, timeout)
 			if err != nil {
 				return err
 			}
@@ -189,7 +197,7 @@ var appInstalled = &cobra.Command{
 	Short: "List all apps that are installed",
 	Run: func(cmd *cobra.Command, args []string) {
 		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
-			resp, err := client.BiosInstalledApps(clientUUID, timeout)
+			resp, err := client.BiosInstalledApps(timeout)
 			if err != nil {
 				return err
 			}
@@ -204,7 +212,7 @@ var appList = &cobra.Command{
 	Short: "List all available apps from the library that can be installed",
 	Run: func(cmd *cobra.Command, args []string) {
 		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
-			resp, err := client.BiosLibraryApps(clientUUID, timeout)
+			resp, err := client.BiosLibraryApps(timeout)
 			if err != nil {
 				return err
 			}
@@ -218,16 +226,11 @@ func init() {
 	// Define persistent flags common to all commands
 	rootCmd.PersistentFlags().StringVarP(&natsURL, "url", "u", "nats://localhost:4222", "NATS server URL")
 	rootCmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", 5*time.Second, "Request timeout")
-	rootCmd.PersistentFlags().StringVarP(&clientUUID, "client-uuid", "c", "", "Client UUID")
+	rootCmd.PersistentFlags().StringVarP(&globalUUID, "client-uuid", "c", "", "Client UUID")
 	rootCmd.MarkPersistentFlagRequired("client-uuid")
 
 	createHostCmd.Flags().StringVarP(&jsonInput, "json", "j", "", "JSON input")
 	createHostCmd.MarkFlagRequired("json")
-
-	rootCmd.PersistentFlags().StringVarP(&appName, "name", "n", "", "name")
-	//rootCmd.MarkPersistentFlagRequired("name")
-
-	rootCmd.PersistentFlags().StringVarP(&appVersion, "version", "v", "", "version")
 	//rootCmd.MarkPersistentFlagRequired("version")
 
 	// Add createHostCmd as a subcommand

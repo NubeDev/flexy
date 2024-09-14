@@ -15,7 +15,6 @@ func (inst *Service) natsForwarder(globalUUID string, sourceNATS *nats.Conn, tar
 	// Connect to the NATS server for the source
 	// Create a forwarder to forward requests to the target NATS server
 	timeout := 5 * time.Second
-	log.Info().Msgf("connected to NATS modules server: %s", targetURL)
 	forwarder, err := natsforwarder.NewForwarder(targetURL, timeout)
 	if err != nil {
 		log.Fatal().Msgf("Error creating NATS forwarder: %v", err)

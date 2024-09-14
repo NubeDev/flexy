@@ -5,6 +5,8 @@ import (
 	"fmt"
 	model "github.com/NubeDev/flexy/app/models"
 	hostService "github.com/NubeDev/flexy/app/services/v1/host"
+	"github.com/NubeDev/flexy/utils/helpers/pprint"
+	"github.com/NubeDev/flexy/utils/subjects"
 	"log"
 	"sync"
 	"time"
@@ -15,16 +17,20 @@ import (
 
 // Client struct to hold the NATS connection
 type Client struct {
-	natsClient *nats.Conn
+	natsClient         *nats.Conn
+	biosSubjectBuilder *subjects.SubjectBuilder
 }
 
 // New initializes a new Client
-func New(natsURL string) (*Client, error) {
+func New(natsURL, globalUUID string) (*Client, error) {
 	nc, err := nats.Connect(natsURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to NATS: %v", err)
 	}
-	return &Client{natsClient: nc}, nil
+	return &Client{
+		natsClient:         nc,
+		biosSubjectBuilder: subjects.NewSubjectBuilder(globalUUID, "bios", subjects.IsBios),
+	}, nil
 }
 
 // sendNATSRequest is a reusable helper function to send a request to a NATS subject
@@ -46,82 +52,60 @@ func (inst *Client) sendNATSRequest(clientUUID, script string, timeout time.Dura
 	return msg, nil
 }
 
-// BiosInstallApp installs an app with the given name and version on the specified client
-func (inst *Client) BiosInstallApp(clientUUID, appName, version string, timeout time.Duration) (interface{}, error) {
-	installCmd := map[string]interface{}{
-		"command": "install_app",
-		"body": map[string]string{
-			"name":    appName,
-			"version": version,
-		},
-	}
-	requestData, err := json.Marshal(installCmd)
+// Helper to build a request and handle the response
+func (inst *Client) biosCommandRequest(body map[string]string, action, entity, op string, timeout time.Duration) (interface{}, error) {
+	// Marshal the request body
+	requestData, err := json.Marshal(body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal install command: %v", err)
+		return nil, fmt.Errorf("failed to marshal %s command: %v", body, err)
 	}
 
-	request, err := inst.natsClient.Request(fmt.Sprintf("bios.%s.command", clientUUID), requestData, timeout)
+	// Build the subject
+	subject := inst.biosSubjectBuilder.BuildSubject(action, entity, op)
+
+	// Send the request
+	request, err := inst.natsClient.Request(subject, requestData, timeout)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %v", err)
 	}
+
+	// Unmarshal and return the response
 	var statusResp interface{}
 	err = json.Unmarshal(request.Data, &statusResp)
 	if err != nil {
 		return nil, fmt.Errorf("error: %v", string(request.Data))
 	}
-	return statusResp, err
+
+	return statusResp, nil
+}
+
+// BiosInstallApp installs an app with the given name and version on the specified client
+func (inst *Client) BiosInstallApp(appName, version string, timeout time.Duration) (interface{}, error) {
+	body := map[string]string{"name": appName, "version": version}
+	pprint.PrintJSON(body)
+	return inst.biosCommandRequest(body, "post", "apps", "install", timeout)
 }
 
 // BiosUninstallApp uninstalls an app with the given name and version on the specified client
-func (inst *Client) BiosUninstallApp(clientUUID, appName, version string, timeout time.Duration) (interface{}, error) {
-	uninstallCmd := map[string]interface{}{
-		"command": "uninstall_app",
-		"body": map[string]string{
-			"name":    appName,
-			"version": version,
-		},
-	}
-	requestData, err := json.Marshal(uninstallCmd)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal uninstall command: %v", err)
-	}
-
-	request, err := inst.natsClient.Request(fmt.Sprintf("bios.%s.command", clientUUID), requestData, timeout)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %v", err)
-	}
-	var statusResp interface{}
-	err = json.Unmarshal(request.Data, &statusResp)
-	if err != nil {
-		return nil, fmt.Errorf("error: %v", string(request.Data))
-	}
-	return statusResp, err
+func (inst *Client) BiosUninstallApp(appName, version string, timeout time.Duration) (interface{}, error) {
+	body := map[string]string{"name": appName, "version": version}
+	return inst.biosCommandRequest(body, "post", "apps", "uninstall", timeout)
 }
 
-func (inst *Client) BiosInstalledApps(clientUUID string, timeout time.Duration) (interface{}, error) {
-	request, err := inst.natsClient.Request(fmt.Sprintf("bios.%s.command", clientUUID), []byte(`{"command": "list_installed_apps"}`), timeout)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %v", err)
-	}
-	var statusResp interface{}
-	err = json.Unmarshal(request.Data, &statusResp)
-	if err != nil {
-		return nil, fmt.Errorf("error: %v", string(request.Data))
-	}
-	return statusResp, err
+type Message struct {
+	Message string `json:"message"`
 }
 
-func (inst *Client) BiosLibraryApps(clientUUID string, timeout time.Duration) (interface{}, error) {
-	request, err := inst.natsClient.Request(fmt.Sprintf("bios.%s.command", clientUUID), []byte(`{"command": "list_library_apps"}`), timeout)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %v", err)
-	}
-	var statusResp interface{}
-	err = json.Unmarshal(request.Data, &statusResp)
-	if err != nil {
-		return nil, fmt.Errorf("error: %v", string(request.Data))
-	}
-	return statusResp, err
+// BiosInstalledApps retrieves a list of installed apps on the client
+func (inst *Client) BiosInstalledApps(timeout time.Duration) (interface{}, error) {
+	body := map[string]string{"body": ""}
+	return inst.biosCommandRequest(body, "get", "apps", "installed", timeout)
+}
+
+// BiosLibraryApps retrieves a list of available apps in the library on the client
+func (inst *Client) BiosLibraryApps(timeout time.Duration) (interface{}, error) {
+	body := map[string]string{"body": ""}
+	return inst.biosCommandRequest(body, "get", "apps", "library", timeout)
 }
 
 // PingHostAllCore pings all hosts and collects responses from multiple clients.
