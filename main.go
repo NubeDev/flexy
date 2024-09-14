@@ -13,6 +13,7 @@ import (
 	"github.com/NubeDev/flexy/routers"
 	"github.com/NubeDev/flexy/utils/casbin"
 	"github.com/NubeDev/flexy/utils/setting"
+	"github.com/NubeDev/flexy/utils/subjects"
 	"github.com/gin-gonic/gin"
 	"github.com/nats-io/nats.go"
 	"github.com/rs/zerolog/log"
@@ -25,6 +26,7 @@ import (
 )
 
 var globalUUID string
+var appID = "ros"
 var port int
 var natsModulePort int
 var useAuth bool
@@ -132,10 +134,9 @@ func cli() {
 
 func bootNatsCloud(uuid string, natsRouter *natsrouter.NatsRouter) {
 	log.Info().Msgf("starting edge device with UUID: %s", uuid)
-	// Register NATS routes
+	subject := subjects.NewSubjectBuilder(globalUUID, appID, subjects.IsApp)
 	natsRouter.Handle(fmt.Sprintf("%s.", setting.NatsSettings.TopicPrefix)+uuid+".flex.rql", natsapis.RQLHandler())
-	natsRouter.Handle(fmt.Sprintf("%s.", setting.NatsSettings.TopicPrefix)+uuid+".flex.ping", natsrouter.PingHandler(uuid))
-	// Keep the edge device running indefinitely
+	natsRouter.Handle(subject.BuildSubject("get", "system", "ping"), natsrouter.PingHandler(uuid))
 	select {}
 }
 

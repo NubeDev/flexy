@@ -10,7 +10,7 @@ import (
 )
 
 // ReadFile reads the contents of a file
-func (s *Service) ReadFile(path string) (string, error) {
+func (inst *Service) ReadFile(path string) (string, error) {
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
 		return "", err
@@ -19,17 +19,17 @@ func (s *Service) ReadFile(path string) (string, error) {
 }
 
 // MakeDir creates a new directory
-func (s *Service) MakeDir(path string) error {
+func (inst *Service) MakeDir(path string) error {
 	return os.MkdirAll(path, os.ModePerm)
 }
 
 // DeleteDir deletes an existing directory
-func (s *Service) DeleteDir(path string) error {
+func (inst *Service) DeleteDir(path string) error {
 	return os.RemoveAll(path)
 }
 
 // ZipFolder zips the contents of a folder
-func (s *Service) ZipFolder(srcDir, dstZip string) error {
+func (inst *Service) ZipFolder(srcDir, dstZip string) error {
 	zipFile, err := os.Create(dstZip)
 	if err != nil {
 		return err
@@ -65,7 +65,7 @@ func (s *Service) ZipFolder(srcDir, dstZip string) error {
 }
 
 // UnzipFolder extracts a zip archive into a destination folder
-func (s *Service) UnzipFolder(srcZip, destDir string) error {
+func (inst *Service) UnzipFolder(srcZip, destDir string) error {
 	zipReader, err := zip.OpenReader(srcZip)
 	if err != nil {
 		return err

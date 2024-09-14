@@ -9,7 +9,7 @@ import (
 func main() {
 	var err error
 	// Create a new AppManager instance
-	manager := appmanager.NewAppManager("/home/user/code/go/nube/flex/flexy/modules/bios/testbios/data/", "/etc/systemd/system")
+	manager, _ := appmanager.NewAppManager("/home/user/code/go/nube/flex/flexy/modules/bios/testbios/data/", "/etc/systemd/system")
 
 	// Install the app
 	appName := "my-app"

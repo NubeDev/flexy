@@ -2,7 +2,7 @@ package natsrouter
 
 import (
 	"github.com/nats-io/nats.go"
-	"log"
+	"github.com/rs/zerolog/log"
 )
 
 type NatsRouter struct {
@@ -18,7 +18,7 @@ func New(nc *nats.Conn) *NatsRouter {
 	// Initialize JetStream context
 	js, err := nc.JetStream()
 	if err != nil {
-		log.Fatalf("Error initializing JetStream: %v", err)
+		log.Fatal().Msgf("Error initializing JetStream: %v", err)
 	}
 
 	return &NatsRouter{nc: nc, JetStreamContext: js}
@@ -26,19 +26,27 @@ func New(nc *nats.Conn) *NatsRouter {
 
 // Handle registers a handler for a NATS subject
 func (r *NatsRouter) Handle(subject string, handler NatsHandlerFunc) {
-	r.nc.Subscribe(subject, nats.MsgHandler(handler))
+	_, err := r.nc.Subscribe(subject, nats.MsgHandler(handler))
+	if err != nil {
+		log.Error().Msgf("err: %v on subscribe to subject: %s", subject, err)
+		return
+	}
 }
 
 // QueueHandle registers a handler for a NATS subject with a queue group
 func (r *NatsRouter) QueueHandle(subject string, queue string, handler NatsHandlerFunc) {
-	r.nc.QueueSubscribe(subject, queue, nats.MsgHandler(handler))
+	_, err := r.nc.QueueSubscribe(subject, queue, nats.MsgHandler(handler))
+	if err != nil {
+		log.Error().Msgf("err: %v on subscribe to subject: %s", subject, err)
+		return
+	}
 }
 
 // Publish publishes a message on a NATS subject
 func (r *NatsRouter) Publish(subject string, reply string, data []byte) {
 	err := r.nc.Publish(subject, data)
 	if err != nil {
-		log.Println("Error publishing message:", err)
+		log.Info().Msgf("Error publishing message: %v", err)
 	}
 }
 

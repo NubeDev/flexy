@@ -2,10 +2,9 @@ package natsforwarder
 
 import (
 	"fmt"
-	"log"
-	"time"
-
 	"github.com/nats-io/nats.go"
+	"github.com/rs/zerolog/log"
+	"time"
 )
 
 // Forwarder manages the connection to the target NATS server
@@ -20,6 +19,7 @@ func NewForwarder(url string, timeout time.Duration) (*Forwarder, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to NATS server: %v", err)
 	}
+	log.Info().Msgf("start nats proxy on url: %s", url)
 	return &Forwarder{
 		natsClient: nc,
 		timeout:    timeout,

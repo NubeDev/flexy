@@ -31,18 +31,18 @@ type App struct {
 }
 
 // NewAppManager creates a new AppManager instance
-func NewAppManager(rootPath, systemPath string) *AppManager {
+func NewAppManager(rootPath, systemPath string) (*AppManager, error) {
 	var libraryPath = "library"
 	var installPath = "install"
 	var backupPath = "backup"
 	var tmpPath = "tmp"
 	if rootPath == "" {
-		rootPath = "data"
+		rootPath = "/data"
 	}
 	if systemPath == "" {
 		systemPath = "/etc/systemd/system"
 	}
-	return &AppManager{
+	am := &AppManager{
 		LibraryPath: fmt.Sprintf("%s/%s", rootPath, libraryPath),
 		InstallPath: fmt.Sprintf("%s/%s", rootPath, installPath),
 		BackupPath:  fmt.Sprintf("%s/%s", rootPath, backupPath),
@@ -50,6 +50,28 @@ func NewAppManager(rootPath, systemPath string) *AppManager {
 		SystemPath:  systemPath,
 		cmd:         commands.New(),
 	}
+	err := am.ensureDirectories()
+	return am, err
+}
+
+func (inst *AppManager) ensureDirectories() error {
+	dirs := []string{
+		inst.LibraryPath,
+		inst.InstallPath,
+		inst.BackupPath,
+		inst.TmpPath,
+	}
+
+	// Loop through each directory and create it if it doesn't exist
+	for _, dir := range dirs {
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+				return fmt.Errorf("failed to create directory %s: %w", dir, err)
+			}
+			fmt.Printf("Created directory: %s\n", dir)
+		}
+	}
+	return nil
 }
 
 func (inst *AppManager) ListLibraryApps() ([]*App, error) {
@@ -92,7 +114,7 @@ func getAppsFromDir(dir string) ([]*App, error) {
 func (inst *AppManager) ListInstalledApps() ([]*App, error) {
 	var apps []*App
 
-	// Read the contents of the install directory
+	// Read the contents of the installation directory
 	files, err := os.ReadDir(inst.InstallPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read install directory: %w", err)
@@ -193,9 +215,88 @@ func (inst *AppManager) Uninstall(app *App) error {
 		return fmt.Errorf("failed to backup app: %w", err)
 	}
 
-	// Step 5: Delete the app from the install directory
+	// Step 5: Delete the app from the installation directory
 	if err := os.RemoveAll(installPath); err != nil {
 		return fmt.Errorf("failed to delete app: %w", err)
+	}
+
+	return nil
+}
+
+func (inst *AppManager) DeleteSystemFile(appName string) error {
+	// Construct the full path to the systemd service file
+	serviceFilePath := filepath.Join(inst.SystemPath, fmt.Sprintf("%s.service", appName))
+
+	// Check if the service file exists
+	if _, err := os.Stat(serviceFilePath); os.IsNotExist(err) {
+		return fmt.Errorf("system file for app %s not found", appName)
+	}
+
+	// Remove the service file
+	if err := os.Remove(serviceFilePath); err != nil {
+		return fmt.Errorf("failed to remove system file for app %s: %w", appName, err)
+	}
+
+	fmt.Printf("System file for app %s successfully deleted.\n", appName)
+	return nil
+}
+
+func (inst *AppManager) DeleteApp(appName string) error {
+	// Construct the full path to the install directory for the app
+	appInstallDir := filepath.Join(inst.InstallPath, appName)
+
+	// Check if the install directory exists
+	if _, err := os.Stat(appInstallDir); os.IsNotExist(err) {
+		return fmt.Errorf("install directory for app %s not found", appName)
+	}
+
+	// Remove the install directory
+	if err := os.RemoveAll(appInstallDir); err != nil {
+		return fmt.Errorf("failed to remove install directory for app %s: %w", appName, err)
+	}
+
+	fmt.Printf("Install directory for app %s successfully deleted.\n", appName)
+	return nil
+}
+
+func (inst *AppManager) DeleteAppBackup(appName string) error {
+	// Construct the full path to the backup directory for the app
+	appBackupDir := filepath.Join(inst.BackupPath, appName)
+
+	// Check if the backup directory exists
+	if _, err := os.Stat(appBackupDir); os.IsNotExist(err) {
+		return fmt.Errorf("backup directory for app %s not found", appName)
+	}
+
+	// Remove the backup directory
+	if err := os.RemoveAll(appBackupDir); err != nil {
+		return fmt.Errorf("failed to remove backup directory for app %s: %w", appName, err)
+	}
+
+	fmt.Printf("Backup directory for app %s successfully deleted.\n", appName)
+	return nil
+}
+
+func (inst *AppManager) DeleteLibraryApp(appName string) error {
+	// Construct the full path to the library files for the app
+	files, err := os.ReadDir(inst.LibraryPath)
+	if err != nil {
+		return fmt.Errorf("failed to read library directory: %w", err)
+	}
+
+	// Loop through the files and find the ones matching the app name
+	for _, file := range files {
+		// Match files that start with the app name and have a .zip extension
+		if !file.IsDir() && strings.HasPrefix(file.Name(), appName) && filepath.Ext(file.Name()) == ".zip" {
+			filePath := filepath.Join(inst.LibraryPath, file.Name())
+
+			// Remove the file
+			if err := os.Remove(filePath); err != nil {
+				return fmt.Errorf("failed to remove library file for app %s: %w", appName, err)
+			}
+
+			fmt.Printf("Library file %s for app %s successfully deleted.\n", file.Name(), appName)
+		}
 	}
 
 	return nil

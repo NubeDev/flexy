@@ -15,14 +15,18 @@ func main() {
 		return
 	}
 	defer service.natsConn.Close()
-	go natsForwarder(globalUUID, service.natsConn, fmt.Sprintf("nats://127.0.0.1:%d", 4222))
+	go service.natsForwarder(globalUUID, service.natsConn, fmt.Sprintf("nats://127.0.0.1:%d", 4223))
 	err = service.natsStoreInit(service.natsConn)
 	if err != nil {
 		log.Fatal("failed to init nats-store")
 		return
 	}
 	fmt.Println("Service started...")
-	service.StartService(globalUUID)
+	err = service.StartService(globalUUID)
+	if err != nil {
+		log.Fatal("failed to init nats-service", err)
+		return
+	}
 
 	// Block the main thread forever
 	select {}

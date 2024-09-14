@@ -6,6 +6,7 @@ import (
 	"github.com/NubeDev/flexy/app/services/natsrouter"
 	"github.com/NubeDev/flexy/modules/bios/appmanager"
 	"github.com/NubeDev/flexy/utils/code"
+	"github.com/NubeDev/flexy/utils/subjects"
 	"github.com/NubeDev/flexy/utils/systemctl"
 	"github.com/nats-io/nats.go"
 )
@@ -18,10 +19,11 @@ type Command struct {
 
 // Service struct to handle NATS and file operations
 type Service struct {
-	natsConn   *nats.Conn
-	natsStore  *natsrouter.NatsRouter
-	systemD    *systemctl.CTL
-	appManager *appmanager.AppManager
+	natsConn           *nats.Conn
+	natsStore          *natsrouter.NatsRouter
+	systemD            *systemctl.CTL
+	appManager         *appmanager.AppManager
+	biosSubjectBuilder *subjects.SubjectBuilder
 }
 
 // NewService initializes the NATS connection and returns the Service
@@ -30,158 +32,288 @@ func NewService(natsURL, dataPath, systemPath string) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	appManager, err := appmanager.NewAppManager(dataPath, systemPath)
+	if err != nil {
+		return nil, err
+	}
 	return &Service{
-		natsConn:   nc,
-		systemD:    systemctl.New(),
-		appManager: appmanager.NewAppManager(dataPath, systemPath),
+		natsConn:           nc,
+		systemD:            systemctl.New(),
+		appManager:         appManager,
+		biosSubjectBuilder: subjects.NewSubjectBuilder(globalUUID, "bios", subjects.IsBios),
 	}, nil
 }
 
 // Common error handling method
-func (s *Service) handleError(reply string, responseCode int, details string) {
+func (inst *Service) handleError(reply string, responseCode int, details string) {
 	response := map[string]interface{}{
 		"code":    responseCode,
 		"message": code.GetMsg(responseCode),
 		"details": details,
 	}
 	respJSON, _ := json.Marshal(response)
-	s.natsConn.Publish(reply, respJSON)
+	inst.natsConn.Publish(reply, respJSON)
 }
 
 // Common NATS publish method
-func (s *Service) publish(reply string, content string, responseCode int) {
+func (inst *Service) publish(reply string, content string, responseCode int) {
 	response := map[string]interface{}{
 		"code":    responseCode,
 		"message": code.GetMsg(responseCode),
 		"content": content,
 	}
 	respJSON, _ := json.Marshal(response)
-	s.natsConn.Publish(reply, respJSON)
+	inst.natsConn.Publish(reply, respJSON)
+}
+
+// GetCommandValue extracts a value from the command body by key
+func (inst *Service) GetCommandValue(cmd *Command, key string) (string, error) {
+	value, ok := cmd.Body[key].(string)
+	if !ok || value == "" {
+		return "", fmt.Errorf("'%s' is required and must be a non-empty string", key)
+	}
+	return value, nil
+}
+
+// DecodeCommand decodes the incoming NATS message into a Command struct
+func (inst *Service) DecodeCommand(m *nats.Msg) (*Command, error) {
+	var cmd Command
+	if err := json.Unmarshal(m.Data, &cmd); err != nil {
+		return nil, fmt.Errorf("invalid JSON format: %v", err)
+	}
+	return &cmd, nil
 }
 
 // HandleCommand processes incoming JSON commands
-func (s *Service) HandleCommand(m *nats.Msg) {
-	var cmd Command
-
-	// Unmarshal the received JSON message
-	if err := json.Unmarshal(m.Data, &cmd); err != nil {
-		s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Invalid JSON format: %v", err))
+func (inst *Service) HandleCommand(m *nats.Msg) {
+	cmd, err := inst.DecodeCommand(m)
+	if err != nil {
+		inst.handleError(m.Reply, code.ERROR, err.Error())
 		return
 	}
 
+	// Call the appropriate method based on the command
 	switch cmd.Command {
 	case "ping":
-		s.publish(m.Reply, "PONG", code.SUCCESS)
+		inst.handlePing(m)
 	case "list_library_apps":
-		apps, err := s.appManager.ListLibraryApps()
-		if err != nil {
-			s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error listing library apps: %v", err))
-		} else {
-			respJSON, _ := json.Marshal(apps)
-			s.publish(m.Reply, string(respJSON), code.SUCCESS)
-		}
-
+		inst.handleListLibraryApps(m)
 	case "list_installed_apps":
-		apps, err := s.appManager.ListInstalledApps()
-		if err != nil {
-			s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error listing installed apps: %v", err))
-		} else {
-			respJSON, _ := json.Marshal(apps)
-			s.publish(m.Reply, string(respJSON), code.SUCCESS)
-		}
-
+		inst.handleListInstalledApps(m)
 	case "install_app":
-		appName, ok := cmd.Body["name"].(string)
-		version, versionOk := cmd.Body["version"].(string)
-		if !ok || !versionOk || appName == "" || version == "" {
-			s.handleError(m.Reply, code.InvalidParams, "'name' and 'version' are required for install_app")
-			return
-		}
-		app := &appmanager.App{Name: appName, Version: version}
-		err := s.appManager.Install(app)
-		if err != nil {
-			s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error installing app: %v", err))
-		} else {
-			s.publish(m.Reply, fmt.Sprintf("App %s version %s installed", appName, version), code.SUCCESS)
-		}
-
+		inst.handleInstallApp(m)
 	case "uninstall_app":
-		appName, ok := cmd.Body["name"].(string)
-		version, versionOk := cmd.Body["version"].(string)
-		if !ok || !versionOk || appName == "" || version == "" {
-			s.handleError(m.Reply, code.InvalidParams, "'name' and 'version' are required for uninstall_app")
-			return
-		}
-		app := &appmanager.App{Name: appName, Version: version}
-		err := s.appManager.Uninstall(app)
-		if err != nil {
-			s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error uninstalling app: %v", err))
-		} else {
-			s.publish(m.Reply, fmt.Sprintf("App %s version %s uninstalled", appName, version), code.SUCCESS)
-		}
+		inst.handleUninstallApp(m)
 	case "read_file":
-		path, ok := cmd.Body["path"].(string)
-		if !ok || path == "" {
-			s.handleError(m.Reply, code.InvalidParams, "'path' is required for read_file")
-			return
-		}
-		content, err := s.ReadFile(path)
-		if err != nil {
-			s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error reading file: %v", err))
-		} else {
-			s.publish(m.Reply, content, code.SUCCESS)
-		}
+		inst.handleReadFile(m)
 	case "make_dir":
-		path, ok := cmd.Body["path"].(string)
-		if !ok || path == "" {
-			s.handleError(m.Reply, code.InvalidParams, "'path' is required for make_dir")
-			return
-		}
-		err := s.MakeDir(path)
-		if err != nil {
-			s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error creating directory: %v", err))
-		} else {
-			s.publish(m.Reply, "Directory created", code.SUCCESS)
-		}
+		inst.handleMakeDir(m)
 	case "delete_dir":
-		path, ok := cmd.Body["path"].(string)
-		if !ok || path == "" {
-			s.handleError(m.Reply, code.InvalidParams, "'path' is required for delete_dir")
-			return
-		}
-		err := s.DeleteDir(path)
-		if err != nil {
-			s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error deleting directory: %v", err))
-		} else {
-			s.publish(m.Reply, "Directory deleted", code.SUCCESS)
-		}
+		inst.handleDeleteDir(m)
 	case "zip_folder":
-		srcDir, srcOk := cmd.Body["srcDir"].(string)
-		dstZip, dstOk := cmd.Body["dstZip"].(string)
-		if !srcOk || !dstOk || srcDir == "" || dstZip == "" {
-			s.handleError(m.Reply, code.InvalidParams, "'srcDir' and 'dstZip' are required for zip_folder")
-			return
-		}
-		err := s.ZipFolder(srcDir, dstZip)
-		if err != nil {
-			s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error zipping folder: %v", err))
-		} else {
-			s.publish(m.Reply, "Folder zipped", code.SUCCESS)
-		}
+		inst.handleZipFolder(m)
 	case "unzip_folder":
-		srcZip, srcOk := cmd.Body["srcZip"].(string)
-		destDir, dstOk := cmd.Body["destDir"].(string)
-		if !srcOk || !dstOk || srcZip == "" || destDir == "" {
-			s.handleError(m.Reply, code.InvalidParams, "'srcZip' and 'destDir' are required for unzip_folder")
-			return
-		}
-		err := s.UnzipFolder(srcZip, destDir)
-		if err != nil {
-			s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error unzipping folder: %v", err))
-		} else {
-			s.publish(m.Reply, "Folder unzipped", code.SUCCESS)
-		}
+		inst.handleUnzipFolder(m)
 	default:
-		s.handleError(m.Reply, code.UnknownCommand, "Unknown command")
+		inst.handleError(m.Reply, code.UnknownCommand, "Unknown command")
+	}
+}
+
+// Individual command handlers
+
+func (inst *Service) handlePing(m *nats.Msg) {
+	inst.publish(m.Reply, "PONG", code.SUCCESS)
+}
+
+func (inst *Service) handleListLibraryApps(m *nats.Msg) {
+	apps, err := inst.appManager.ListLibraryApps()
+	if err != nil {
+		inst.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error listing library apps: %v", err))
+		return
+	}
+	respJSON, _ := json.Marshal(apps)
+	inst.publish(m.Reply, string(respJSON), code.SUCCESS)
+}
+
+func (inst *Service) handleListInstalledApps(m *nats.Msg) {
+	apps, err := inst.appManager.ListInstalledApps()
+	if err != nil {
+		inst.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error listing installed apps: %v", err))
+		return
+	}
+	respJSON, _ := json.Marshal(apps)
+	inst.publish(m.Reply, string(respJSON), code.SUCCESS)
+}
+
+func (inst *Service) handleInstallApp(m *nats.Msg) {
+	cmd, err := inst.DecodeCommand(m)
+	if err != nil {
+		inst.handleError(m.Reply, code.ERROR, err.Error())
+		return
+	}
+
+	appName, err := inst.GetCommandValue(cmd, "name")
+	if err != nil {
+		inst.handleError(m.Reply, code.InvalidParams, err.Error())
+		return
+	}
+
+	version, err := inst.GetCommandValue(cmd, "version")
+	if err != nil {
+		inst.handleError(m.Reply, code.InvalidParams, err.Error())
+		return
+	}
+
+	app := &appmanager.App{Name: appName, Version: version}
+	err = inst.appManager.Install(app)
+	if err != nil {
+		inst.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error installing app: %v", err))
+	} else {
+		inst.publish(m.Reply, fmt.Sprintf("App %s version %s installed", appName, version), code.SUCCESS)
+	}
+}
+
+func (inst *Service) handleUninstallApp(m *nats.Msg) {
+	cmd, err := inst.DecodeCommand(m)
+	if err != nil {
+		inst.handleError(m.Reply, code.ERROR, err.Error())
+		return
+	}
+
+	appName, err := inst.GetCommandValue(cmd, "name")
+	if err != nil {
+		inst.handleError(m.Reply, code.InvalidParams, err.Error())
+		return
+	}
+
+	version, err := inst.GetCommandValue(cmd, "version")
+	if err != nil {
+		inst.handleError(m.Reply, code.InvalidParams, err.Error())
+		return
+	}
+
+	app := &appmanager.App{Name: appName, Version: version}
+	err = inst.appManager.Uninstall(app)
+	if err != nil {
+		inst.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error uninstalling app: %v", err))
+	} else {
+		inst.publish(m.Reply, fmt.Sprintf("App %s version %s uninstalled", appName, version), code.SUCCESS)
+	}
+}
+
+func (inst *Service) handleReadFile(m *nats.Msg) {
+	cmd, err := inst.DecodeCommand(m)
+	if err != nil {
+		inst.handleError(m.Reply, code.ERROR, err.Error())
+		return
+	}
+
+	path, err := inst.GetCommandValue(cmd, "path")
+	if err != nil {
+		inst.handleError(m.Reply, code.InvalidParams, err.Error())
+		return
+	}
+
+	content, err := inst.ReadFile(path)
+	if err != nil {
+		inst.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error reading file: %v", err))
+	} else {
+		inst.publish(m.Reply, content, code.SUCCESS)
+	}
+}
+
+func (inst *Service) handleMakeDir(m *nats.Msg) {
+	cmd, err := inst.DecodeCommand(m)
+	if err != nil {
+		inst.handleError(m.Reply, code.ERROR, err.Error())
+		return
+	}
+
+	path, err := inst.GetCommandValue(cmd, "path")
+	if err != nil {
+		inst.handleError(m.Reply, code.InvalidParams, err.Error())
+		return
+	}
+
+	err = inst.MakeDir(path)
+	if err != nil {
+		inst.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error creating directory: %v", err))
+	} else {
+		inst.publish(m.Reply, "Directory created", code.SUCCESS)
+	}
+}
+
+func (inst *Service) handleDeleteDir(m *nats.Msg) {
+	cmd, err := inst.DecodeCommand(m)
+	if err != nil {
+		inst.handleError(m.Reply, code.ERROR, err.Error())
+		return
+	}
+
+	path, err := inst.GetCommandValue(cmd, "path")
+	if err != nil {
+		inst.handleError(m.Reply, code.InvalidParams, err.Error())
+		return
+	}
+
+	err = inst.DeleteDir(path)
+	if err != nil {
+		inst.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error deleting directory: %v", err))
+	} else {
+		inst.publish(m.Reply, "Directory deleted", code.SUCCESS)
+	}
+}
+
+func (inst *Service) handleZipFolder(m *nats.Msg) {
+	cmd, err := inst.DecodeCommand(m)
+	if err != nil {
+		inst.handleError(m.Reply, code.ERROR, err.Error())
+		return
+	}
+
+	srcDir, err := inst.GetCommandValue(cmd, "srcDir")
+	if err != nil {
+		inst.handleError(m.Reply, code.InvalidParams, err.Error())
+		return
+	}
+
+	dstZip, err := inst.GetCommandValue(cmd, "dstZip")
+	if err != nil {
+		inst.handleError(m.Reply, code.InvalidParams, err.Error())
+		return
+	}
+
+	err = inst.ZipFolder(srcDir, dstZip)
+	if err != nil {
+		inst.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error zipping folder: %v", err))
+	} else {
+		inst.publish(m.Reply, "Folder zipped", code.SUCCESS)
+	}
+}
+
+func (inst *Service) handleUnzipFolder(m *nats.Msg) {
+	cmd, err := inst.DecodeCommand(m)
+	if err != nil {
+		inst.handleError(m.Reply, code.ERROR, err.Error())
+		return
+	}
+
+	srcZip, err := inst.GetCommandValue(cmd, "srcZip")
+	if err != nil {
+		inst.handleError(m.Reply, code.InvalidParams, err.Error())
+		return
+	}
+
+	destDir, err := inst.GetCommandValue(cmd, "destDir")
+	if err != nil {
+		inst.handleError(m.Reply, code.InvalidParams, err.Error())
+		return
+	}
+
+	err = inst.UnzipFolder(srcZip, destDir)
+	if err != nil {
+		inst.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error unzipping folder: %v", err))
+	} else {
+		inst.publish(m.Reply, "Folder unzipped", code.SUCCESS)
 	}
 }
