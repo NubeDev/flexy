@@ -6,7 +6,7 @@ import (
 )
 
 func TestNew(t *testing.T) {
-	client, err := New("nats://127.0.0.1:4223")
+	client, err := New("nats://127.0.0.1:4223", "")
 	if err != nil {
 		return
 	}

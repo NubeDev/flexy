@@ -2,12 +2,14 @@ package rqlclient
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	model "github.com/NubeDev/flexy/app/models"
 	hostService "github.com/NubeDev/flexy/app/services/v1/host"
-	"github.com/NubeDev/flexy/utils/helpers/pprint"
+	githubdownloader "github.com/NubeDev/flexy/utils/gitdownloader"
 	"github.com/NubeDev/flexy/utils/subjects"
-	"log"
+	"github.com/rs/zerolog/log"
+
 	"sync"
 	"time"
 
@@ -19,6 +21,7 @@ import (
 type Client struct {
 	natsClient         *nats.Conn
 	biosSubjectBuilder *subjects.SubjectBuilder
+	gitDownloader      *githubdownloader.GitHubDownloader
 }
 
 // New initializes a new Client
@@ -62,7 +65,7 @@ func (inst *Client) biosCommandRequest(body map[string]string, action, entity, o
 
 	// Build the subject
 	subject := inst.biosSubjectBuilder.BuildSubject(action, entity, op)
-
+	log.Info().Msgf("bios-command nats subject: %s", subject)
 	// Send the request
 	request, err := inst.natsClient.Request(subject, requestData, timeout)
 	if err != nil {
@@ -79,10 +82,14 @@ func (inst *Client) biosCommandRequest(body map[string]string, action, entity, o
 	return statusResp, nil
 }
 
+func (inst *Client) BiosSystemdCommand(serviceName, action, property string, timeout time.Duration) (interface{}, error) {
+	body := map[string]string{"name": serviceName, "action": action, "property": property}
+	return inst.biosCommandRequest(body, "get", "system", "systemctl", timeout)
+}
+
 // BiosInstallApp installs an app with the given name and version on the specified client
 func (inst *Client) BiosInstallApp(appName, version string, timeout time.Duration) (interface{}, error) {
 	body := map[string]string{"name": appName, "version": version}
-	pprint.PrintJSON(body)
 	return inst.biosCommandRequest(body, "post", "apps", "install", timeout)
 }
 
@@ -140,11 +147,11 @@ func (inst *Client) PingHostAllCore() ([]string, error) {
 			default:
 				// Wait for the next message with a short timeout
 				msg, err := sub.NextMsg(1 * time.Second)
-				if err == nats.ErrTimeout {
+				if errors.Is(err, nats.ErrTimeout) {
 					continue
 				}
 				if err != nil {
-					log.Println("Error receiving message:", err)
+					log.Error().Msgf("Error receiving message: %v", err)
 					return
 				}
 				if msg != nil && len(msg.Data) > 0 {

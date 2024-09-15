@@ -6,8 +6,9 @@ import (
 
 // StartService starts the NATS subscription and listens for commands
 // these are the bios commands. eg; install and app
-func (inst *Service) StartService(globalUUID string) error {
+func (inst *Service) StartService() error {
 	var err error
+	var globalUUID = inst.globalUUID
 	_, err = inst.natsConn.Subscribe(inst.biosSubjectBuilder.BuildSubject("get", "system", "ping"), inst.handlePing)
 	if err != nil {
 		return err
@@ -28,6 +29,21 @@ func (inst *Service) StartService(globalUUID string) error {
 	if err != nil {
 		return err
 	}
+
+	_, err = inst.natsConn.Subscribe(inst.biosSubjectBuilder.BuildSubject("get", "system", "systemctl"), inst.BiosSystemdCommand)
+	if err != nil {
+		return err
+	}
+
+	_, err = inst.natsConn.Subscribe(inst.biosSubjectBuilder.BuildSubject("post", "git", "asset"), inst.gitDownloadAsset)
+	if err != nil {
+		return err
+	}
+	_, err = inst.natsConn.Subscribe(inst.biosSubjectBuilder.BuildSubject("get", "git", "assets"), inst.gitListAllAssets)
+	if err != nil {
+		return err
+	}
+
 	_, err = inst.natsConn.Subscribe(fmt.Sprintf("bios.%s.store", globalUUID), inst.HandleStore)
 	if err != nil {
 		return err

@@ -5,12 +5,11 @@ import (
 	"fmt"
 	hostService "github.com/NubeDev/flexy/app/services/v1/host"
 	"github.com/NubeDev/flexy/utils/helpers/pprint"
+	"github.com/NubeDev/flexy/utils/rqlclient"
+	"github.com/spf13/cobra"
 	"log"
 	"os"
 	"time"
-
-	"github.com/NubeDev/flexy/utils/rqlclient"
-	"github.com/spf13/cobra"
 )
 
 var (
@@ -222,16 +221,67 @@ var appList = &cobra.Command{
 	},
 }
 
+var systemCTL = &cobra.Command{
+	Use:   "systemctl",
+	Short: "Run systemd/systemctl commands",
+	Run: func(cmd *cobra.Command, args []string) {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
+			if len(args) < 2 {
+				return fmt.Errorf("not enough arguments: service and action are required. eg my-service start")
+			}
+			service := args[0]
+			action := args[1]
+			var property string
+			if len(args) > 2 {
+				property = args[2]
+			}
+
+			resp, err := client.BiosSystemdCommand(service, action, property, timeout)
+			if err != nil {
+				return err
+			}
+			pprint.PrintJSON(resp)
+			return nil
+		})
+	},
+}
+
+var downloadReleaseCmd = &cobra.Command{
+	Use:   "download-release",
+	Short: "Download a GitHub release asset",
+	Long:  `Download a GitHub release asset by specifying owner, repo, tag, architecture, and other options.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
+			if len(args) < 3 {
+				return fmt.Errorf("not enough arguments, required: owner, repo, tag, arch, token")
+			}
+			owner := args[0]
+			repo := args[1]
+			tag := args[2]
+			arch := args[3]
+			token := args[4]
+
+			resp, err := client.GitDownloadAsset(owner, repo, tag, arch, token, timeout)
+			if err != nil {
+				return err
+			}
+			pprint.PrintJSON(resp)
+			return nil
+		})
+	},
+}
+
 func init() {
 	// Define persistent flags common to all commands
 	rootCmd.PersistentFlags().StringVarP(&natsURL, "url", "u", "nats://localhost:4222", "NATS server URL")
 	rootCmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", 5*time.Second, "Request timeout")
 	rootCmd.PersistentFlags().StringVarP(&globalUUID, "client-uuid", "c", "", "Client UUID")
-	rootCmd.MarkPersistentFlagRequired("client-uuid")
-
+	createHostCmd.MarkFlagRequired("client-uuid")
 	createHostCmd.Flags().StringVarP(&jsonInput, "json", "j", "", "JSON input")
 	createHostCmd.MarkFlagRequired("json")
-	//rootCmd.MarkPersistentFlagRequired("version")
+
+	// Add the new command to rootCmd
+	rootCmd.AddCommand(downloadReleaseCmd)
 
 	// Add createHostCmd as a subcommand
 	rootCmd.AddCommand(createHostCmd)
@@ -248,6 +298,7 @@ func init() {
 	rootCmd.AddCommand(appUninstall)
 	rootCmd.AddCommand(appList)
 	rootCmd.AddCommand(appInstalled)
+	rootCmd.AddCommand(systemCTL)
 
 }
 
