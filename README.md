@@ -33,6 +33,8 @@ Demo set up
 - <app_id>.post.points '{ "scope": "multiple", "body": [{...}, {...}] }'
 - <app_id>.put.points '{ "scope": "one", "name": "point 1", ... }'
 
+- <app_id>.put.wfw '{ "action": "open", "port": 8080}'
+
 ### Cloud NATS to Edge Apps
 
 - <global_uuid>.proxy.<app_id>.get.points '{ "scope": "all", "filter": { "tag": "abc" } }'

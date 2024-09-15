@@ -7,12 +7,11 @@ import (
 	"github.com/NubeDev/flexy/modules/module-abc/ufwcommand"
 	"github.com/nats-io/nats.go"
 	"log"
-	"strings"
 	"time"
 )
 
-// moduleUUID is a unique identifier for this module
-var moduleUUID = "my-module"
+// appID is a unique identifier for this module
+var appID = "my-app-1"
 
 // ufw is the instance of the UFW command system
 var ufw = ufwcommand.New()
@@ -33,7 +32,7 @@ func main() {
 	moduleUUIDParse := flag.String("uuid", "", "UUID for the edge device")
 	flag.Parse()
 	if moduleUUIDParse != nil {
-		moduleUUID = *moduleUUIDParse
+		appID = *moduleUUIDParse
 	}
 	// Connect to NATS server
 	nc, err := nats.Connect("nats://127.0.0.1:4223")
@@ -42,7 +41,7 @@ func main() {
 	}
 	defer nc.Close()
 	// Start the module by subscribing to NATS topics
-	StartModule(nc, moduleUUID)
+	StartModule(nc, appID)
 
 	// Keep the module running
 	select {}
@@ -59,86 +58,9 @@ func StartModule(nc *nats.Conn, moduleID string) {
 	})
 
 	// Subscribe to a method called "ping" for the module
-	nc.QueueSubscribe("module."+moduleID+".help", "module_queue", func(m *nats.Msg) {
-		// Split the incoming message payload
-		messageParts := strings.Split(string(m.Data), " ")
-		fmt.Println(1111, messageParts)
-		// Extract the method name from the split message
-		if len(messageParts) == 0 {
-			err := m.Respond([]byte("Error: No command provided"))
-			if err != nil {
-				log.Printf("Error responding: %v", err)
-			}
-			return
-		}
-
-		command := messageParts[0]
-		var response string
-
-		switch command {
-		case "getMethods":
-			// Handle the "getMethods" request
-			methods := helpGuide.GetMethods()
-			methodsJSON, _ := json.Marshal(methods)
-			response = string(methodsJSON)
-
-		case "getMethodDescription":
-			if len(messageParts) < 2 {
-				response = "Error: methodName not provided for getMethodDescription"
-			} else {
-				methodName := messageParts[1]
-				desc, err := helpGuide.GetMethodDescription(methodName)
-				if err != nil {
-					response = fmt.Sprintf("Error: %s", err.Error())
-				} else {
-					response = desc
-				}
-			}
-
-		case "getMethodArgs":
-			if len(messageParts) < 2 {
-				response = "Error: methodName not provided for getMethodArgs"
-			} else {
-				methodName := messageParts[1]
-				args, err := helpGuide.GetMethodArgs(methodName)
-				if err != nil {
-					response = fmt.Sprintf("Error: %s", err.Error())
-				} else {
-					argsJSON, _ := json.Marshal(args)
-					response = string(argsJSON)
-				}
-			}
-
-		case "getMethodDetails":
-			if len(messageParts) < 2 {
-				response = "Error: methodName not provided for GetMethodDetails"
-			} else {
-				methodName := messageParts[1]
-				args, err := helpGuide.GetMethodDetails(methodName)
-				if err != nil {
-					response = fmt.Sprintf("Error: %s", err.Error())
-				} else {
-					argsJSON, _ := json.Marshal(args)
-					response = string(argsJSON)
-				}
-			}
-
-		default:
-			// If the command is unknown, return an error
-			response = fmt.Sprintf("Error: unknown command '%s'", command)
-		}
-
-		// Send the response back via NATS
-		err := m.Respond([]byte(response))
-		if err != nil {
-			log.Printf("Error responding: %v", err)
-		}
-	})
-
-	// Subscribe to a method called "ping" for the module
 	nc.QueueSubscribe("module."+moduleID+".ping", "module_queue", func(m *nats.Msg) {
 		// Handle the method and return a response
-		response := fmt.Sprintf("PONG from: %s", moduleUUID)
+		response := fmt.Sprintf("PONG from: %s", appID)
 		log.Printf("Received 'ping' method call with payload: %s", string(m.Data))
 		err := m.Respond([]byte(response))
 

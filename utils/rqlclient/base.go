@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/NubeDev/flexy/utils/execute/commands"
 	"github.com/nats-io/nats.go"
 )
 
@@ -80,39 +79,6 @@ func (inst *Client) biosCommandRequest(body map[string]string, action, entity, o
 	}
 
 	return statusResp, nil
-}
-
-func (inst *Client) BiosSystemdCommand(serviceName, action, property string, timeout time.Duration) (interface{}, error) {
-	body := map[string]string{"name": serviceName, "action": action, "property": property}
-	return inst.biosCommandRequest(body, "get", "system", "systemctl", timeout)
-}
-
-// BiosInstallApp installs an app with the given name and version on the specified client
-func (inst *Client) BiosInstallApp(appName, version string, timeout time.Duration) (interface{}, error) {
-	body := map[string]string{"name": appName, "version": version}
-	return inst.biosCommandRequest(body, "post", "apps", "install", timeout)
-}
-
-// BiosUninstallApp uninstalls an app with the given name and version on the specified client
-func (inst *Client) BiosUninstallApp(appName, version string, timeout time.Duration) (interface{}, error) {
-	body := map[string]string{"name": appName, "version": version}
-	return inst.biosCommandRequest(body, "post", "apps", "uninstall", timeout)
-}
-
-type Message struct {
-	Message string `json:"message"`
-}
-
-// BiosInstalledApps retrieves a list of installed apps on the client
-func (inst *Client) BiosInstalledApps(timeout time.Duration) (interface{}, error) {
-	body := map[string]string{"body": ""}
-	return inst.biosCommandRequest(body, "get", "apps", "installed", timeout)
-}
-
-// BiosLibraryApps retrieves a list of available apps in the library on the client
-func (inst *Client) BiosLibraryApps(timeout time.Duration) (interface{}, error) {
-	body := map[string]string{"body": ""}
-	return inst.biosCommandRequest(body, "get", "apps", "library", timeout)
 }
 
 // PingHostAllCore pings all hosts and collects responses from multiple clients.
@@ -192,22 +158,6 @@ func (inst *Client) ModuleHelp(clientUUID, moduleUUID string, args []string, tim
 	if err != nil {
 		return nil, fmt.Errorf("error: %v", string(request.Data))
 	}
-	return statusResp, err
-}
-
-// SystemdStatus sends a request to get the systemd status of a unit
-func (inst *Client) SystemdStatus(clientUUID, unit string, timeout time.Duration) (*commands.StatusResp, error) {
-	script := fmt.Sprintf("ctl.SystemdStatus(\"%s\")", unit)
-	request, err := inst.sendNATSRequest(clientUUID, script, timeout)
-	if err != nil {
-		return nil, err
-	}
-	var statusResp *commands.StatusResp
-	err = json.Unmarshal(request.Data, &statusResp)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %v", err)
-	}
-
 	return statusResp, err
 }
 

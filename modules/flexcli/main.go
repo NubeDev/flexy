@@ -38,24 +38,6 @@ func runCommand(cmd *cobra.Command, args []string, execFunc func(client *rqlclie
 	}
 }
 
-// systemdStatusCmd for fetching systemd status using positional arguments
-var systemdStatusCmd = &cobra.Command{
-	Use:   "systemd-status [unit]",
-	Short: "Get systemd status for a unit",
-	Args:  cobra.ExactArgs(1), // Expect exactly 1 argument (unit name)
-	Run: func(cmd *cobra.Command, args []string) {
-		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
-			unit := args[0] // The unit is passed as a positional argument
-			status, err := client.SystemdStatus(globalUUID, unit, timeout)
-			if err != nil {
-				return err
-			}
-			fmt.Printf("Systemd Status: %+v\n", status)
-			return nil
-		})
-	},
-}
-
 // getHostsCmd for fetching all hosts
 var getHostsCmd = &cobra.Command{
 	Use:   "get-hosts",
@@ -221,6 +203,7 @@ var appList = &cobra.Command{
 	},
 }
 
+// go run main.go --url=nats://localhost:4222 --client-uuid=abc systemctl my-app start
 var systemCTL = &cobra.Command{
 	Use:   "systemctl",
 	Short: "Run systemd/systemctl commands",
@@ -287,7 +270,6 @@ func init() {
 	rootCmd.AddCommand(createHostCmd)
 
 	// Register commands
-	rootCmd.AddCommand(systemdStatusCmd)
 	rootCmd.AddCommand(getHostsCmd)
 	rootCmd.AddCommand(getHostCmd)
 	rootCmd.AddCommand(createHostCmd)

@@ -1,0 +1,2 @@
+id: "app-abc"
+url: "nats://localhost:4222"
