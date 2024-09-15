@@ -1,0 +1,13 @@
+bios:
+  id: "abc"
+  nats_url: "nats://localhost:4222"
+  proxy_port: 4223
+  root_path: "/ros"
+  apps_path: "apps"
+  system_path: ""
+  git_token: ""
+  git_download_path: "/data/library"
+
+services:
+  - ufw
+  - mosquito

@@ -4,39 +4,40 @@ import (
 	"fmt"
 	"github.com/NubeDev/flexy/app/startup"
 	"github.com/nats-io/nats.go"
-	"log"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"os"
 )
 
 func main() {
 	startup.BootLogger()
-	const proxyNatsPort = 4223
-	opts := &Opts{
-		GlobalUUID:      "abc",
-		NatsURL:         nats.DefaultURL,
-		DataPath:        "/data",
-		SystemPath:      "",
-		GitToken:        "",
-		GitDownloadPath: "/data/library",
-		ProxyNatsPort:   proxyNatsPort,
-	}
-	service, err := NewService(opts)
-	if err != nil {
-		fmt.Printf("Failed to connect to NATS: %v\n", err)
-		return
-	}
-	defer service.natsConn.Close()
-	go service.natsForwarder(service.natsConn, fmt.Sprintf("nats://127.0.0.1:%d", opts.ProxyNatsPort))
-	err = service.natsStoreInit(service.natsConn)
-	if err != nil {
-		log.Fatal("failed to init nats-store")
-		return
-	}
-	err = service.StartService()
-	if err != nil {
-		log.Fatal("failed to init nats-service", err)
-		return
+
+	service := &Service{
+		Config: viper.New(),
+		RootCmd: &cobra.Command{
+			Use:   "myapp",
+			Short: "My Application",
+		},
 	}
 
-	// Block the main thread forever
+	service.SetupCLI()
+	service.Run()
+}
+
+func (s *Service) InitNATS(natsURL string) error {
+	nc, err := nats.Connect(natsURL)
+	if err != nil {
+		return err
+	}
+	s.natsConn = nc
+	return nil
+}
+
+func (s *Service) Run() {
+	if err := s.RootCmd.Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	// Block the main thread
 	select {}
 }

@@ -84,6 +84,13 @@ func (inst *App) SetupResponders() error {
 	return nil
 }
 
+func (inst *App) handlePing(msg *nats.Msg) []byte {
+	fmt.Printf("Received request on %s: %s\n", msg.Subject, string(msg.Data))
+	// Process the request and return a response
+	response := []byte(fmt.Sprintf("Hello back with: %s", string(msg.Data)))
+	return response
+}
+
 func (inst *App) HandleRequestMessage(msg *nats.Msg) []byte {
 	fmt.Printf("Received request on %s: %s\n", msg.Subject, string(msg.Data))
 	// Process the request and return a response

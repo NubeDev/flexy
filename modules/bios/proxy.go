@@ -11,7 +11,7 @@ import (
 
 // natsForwarder
 // will forward a message to ROS or a module
-func (inst *Service) natsForwarder(sourceNATS *nats.Conn, targetURL string) {
+func (s *Service) natsForwarder(sourceNATS *nats.Conn, targetURL string) {
 	// Connect to the NATS server for the source
 	// Create a forwarder to forward requests to the target NATS server
 	timeout := 5 * time.Second
@@ -21,7 +21,7 @@ func (inst *Service) natsForwarder(sourceNATS *nats.Conn, targetURL string) {
 	}
 	defer forwarder.Close()
 
-	subjectModules := fmt.Sprintf("%s.proxy.>", inst.globalUUID)
+	subjectModules := fmt.Sprintf("%s.proxy.>", s.globalUUID)
 	// Set up a handler to forward requests to the target subject
 	_, err = sourceNATS.QueueSubscribe(subjectModules, "rql_queue", func(m *nats.Msg) {
 		forwardSubject := subjects.GetSubjectParts(m.Subject)

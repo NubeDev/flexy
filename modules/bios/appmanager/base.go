@@ -4,7 +4,8 @@ import (
 	"archive/zip"
 	"errors"
 	"fmt"
-	"github.com/NubeDev/flexy/utils/execute/commands"
+	"github.com/NubeDev/flexy/utils/systemctl"
+	"github.com/rs/zerolog/log"
 	"io"
 	"io/ioutil"
 	"os"
@@ -19,8 +20,7 @@ type AppManager struct {
 	BackupPath       string // Path to the backup directory (e.g., data/backup)
 	TmpPath          string // Path to the backup directory (e.g., data/tmp)
 	SystemPath       string // Path to the backup directory (e.g., /lib/systemd/system/)
-	cmd              commands.Commands
-	systemctlService *commands.SystemctlService
+	systemctlService systemctl.Commands
 }
 
 // App struct to hold application details
@@ -33,22 +33,22 @@ type App struct {
 // NewAppManager creates a new AppManager instance
 func NewAppManager(rootPath, systemPath string) (*AppManager, error) {
 	var libraryPath = "library"
-	var installPath = "install"
-	var backupPath = "backup"
-	var tmpPath = "tmp"
+	var installPath = "installed"
+	var backupPath = "backups"
+	var tmpPath = "/ros/tmp"
 	if rootPath == "" {
-		rootPath = "/data"
+		rootPath = "/ros/apps"
 	}
 	if systemPath == "" {
 		systemPath = "/etc/systemd/system"
 	}
 	am := &AppManager{
-		LibraryPath: fmt.Sprintf("%s/%s", rootPath, libraryPath),
-		InstallPath: fmt.Sprintf("%s/%s", rootPath, installPath),
-		BackupPath:  fmt.Sprintf("%s/%s", rootPath, backupPath),
-		TmpPath:     fmt.Sprintf("%s/%s", rootPath, tmpPath),
-		SystemPath:  systemPath,
-		cmd:         commands.New(),
+		LibraryPath:      fmt.Sprintf("%s/%s", rootPath, libraryPath),
+		InstallPath:      fmt.Sprintf("%s/%s", rootPath, installPath),
+		BackupPath:       fmt.Sprintf("%s/%s", rootPath, backupPath),
+		TmpPath:          tmpPath,
+		SystemPath:       systemPath,
+		systemctlService: systemctl.New(),
 	}
 	err := am.ensureDirectories()
 	return am, err
@@ -68,7 +68,7 @@ func (inst *AppManager) ensureDirectories() error {
 			if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 				return fmt.Errorf("failed to create directory %s: %w", dir, err)
 			}
-			fmt.Printf("Created directory: %s\n", dir)
+			log.Info().Msgf("bios created directory: %s", dir)
 		}
 	}
 	return nil
@@ -171,13 +171,13 @@ func (inst *AppManager) Install(app *App) error {
 	}
 
 	// Step 4: Generate systemd service file
-	serviceFilePath, err := inst.createSystemdService(appName, installPath)
+	err := inst.createSystemdService(appName, installPath, version)
 	if err != nil {
 		return fmt.Errorf("failed to generate systemctl service file: %w", err)
 	}
 
 	// Step 5: Move service file and enable it
-	if err := inst.setupAndStartService(appName, serviceFilePath); err != nil {
+	if err := inst.setupAndStartService(appName); err != nil {
 		return fmt.Errorf("failed to setup and start service: %w", err)
 	}
 
@@ -329,10 +329,10 @@ func (inst *AppManager) deleteSystemdService(appName string) error {
 // stopAndDisableService stops and disables the systemd service for the app
 func (inst *AppManager) stopAndDisableService(appName string) error {
 	serviceName := fmt.Sprintf("%s.service", appName)
-	if err := inst.cmd.SystemdCommand(serviceName, "stop"); err != nil {
+	if err := inst.systemctlService.SystemdCommand(serviceName, "stop"); err != nil {
 		return fmt.Errorf("failed to stop service: %w", err)
 	}
-	if err := inst.cmd.SystemdCommand(serviceName, "disable"); err != nil {
+	if err := inst.systemctlService.SystemdCommand(serviceName, "disable"); err != nil {
 		return fmt.Errorf("failed to disable service: %w", err)
 	}
 	return nil
@@ -402,32 +402,31 @@ func extractFile(file *zip.File, dest string) error {
 }
 
 // createSystemdService creates a systemd service file for the app
-func (inst *AppManager) createSystemdService(appName, execPath string) (string, error) {
-	// Use the existing systemctl library for generating a service file
-	service := commands.NewSystemctlService(appName, fmt.Sprintf("Service for %s", appName), fmt.Sprintf("%s/%s", execPath, appName), "always")
-	inst.systemctlService = service
-	tmpServiceFilePath, err := service.GenerateServiceFile(inst.TmpPath) // temp path for generating service file
-	if err != nil {
-		return "", err
+func (inst *AppManager) createSystemdService(appName, execPath, version string) error {
+	serviceFile := &systemctl.ServiceFile{
+		Name:                        appName,
+		Version:                     version,
+		ServiceDescription:          "",
+		RunAsUser:                   "",
+		ServiceWorkingDirectory:     "",
+		ExecStart:                   fmt.Sprintf("%s/%s", execPath, appName),
+		AttachWorkingDirOnExecStart: false,
+		EnvironmentVars:             nil,
+		FileNameWithVersion:         false,
 	}
-	fmt.Printf("create systemd file on tmp path: %s \n", tmpServiceFilePath)
-	return tmpServiceFilePath, nil
+	// Move the service file to /etc/systemd/system/
+	_, err := systemctl.GenerateServiceFile(serviceFile, inst.SystemPath)
+	return err
 }
 
 // setupAndStartService moves the service file to the appropriate location, enables, and starts it
-func (inst *AppManager) setupAndStartService(appName, serviceFilePath string) error {
-	// Move the service file to /etc/systemd/system/
-	if err := inst.systemctlService.MoveServiceFile(serviceFilePath, inst.SystemPath); err != nil {
-		return err
-	}
-	fmt.Printf("move systemd file to from: %s to: %s \n", serviceFilePath, inst.SystemPath)
+func (inst *AppManager) setupAndStartService(appName string) error {
 	serviceName := fmt.Sprintf("%s.service", appName)
-
 	// Enable and start the service
-	if err := inst.cmd.SystemdCommand(serviceName, "enable"); err != nil {
+	if err := inst.systemctlService.SystemdCommand(serviceName, "enable"); err != nil {
 		return fmt.Errorf("failed to enable service: %w", err)
 	}
-	if err := inst.cmd.SystemdCommand(serviceName, "start"); err != nil {
+	if err := inst.systemctlService.SystemdCommand(serviceName, "start"); err != nil {
 		return fmt.Errorf("failed to start service: %w", err)
 	}
 	return nil

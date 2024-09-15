@@ -8,8 +8,8 @@ import (
 
 type App struct {
 	AppID    string
-	Config   *viper.Viper
 	NatsConn *nats.Conn
+	Config   *viper.Viper
 	RootCmd  *cobra.Command
 }
 
