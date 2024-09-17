@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"github.com/NubeDev/flexy/utils/code"
 	"github.com/nats-io/nats.go"
+	"github.com/rs/zerolog/log"
+	"strings"
 )
 
 type Systemd struct {
@@ -21,8 +23,8 @@ func (s *Service) DecodeSystemd(m *nats.Msg) (*Systemd, error) {
 	return &cmd, nil
 }
 
-func (s *Service) BiosSystemdCommand(m *nats.Msg) {
-	// Decode the incoming message into the Systemd struct
+// Central handler for "POST" requests for systemctl
+func (s *Service) handleSystemctlGet(m *nats.Msg) {
 	decoded, err := s.DecodeSystemd(m)
 	if decoded == nil || err != nil {
 		if decoded == nil {
@@ -37,21 +39,11 @@ func (s *Service) BiosSystemdCommand(m *nats.Msg) {
 		s.handleError(m.Reply, code.InvalidParams, "service name is required")
 		return
 	}
-	if decoded.Action == "" {
-		s.handleError(m.Reply, code.InvalidParams, "action is required, e.g., start, stop, restart, enable, disable, status, is-enabled, show")
-		return
-	}
 
-	// Switch based on the action provided
-	switch decoded.Action {
-	case "start", "stop", "restart", "enable", "disable":
-		err := s.systemctlService.SystemdCommand(decoded.Name, decoded.Action)
-		if err != nil {
-			s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error performing %s on service %s: %v", decoded.Action, decoded.Name, err))
-		} else {
-			s.publish(m.Reply, fmt.Sprintf("Service %s %sed successfully", decoded.Name, decoded.Action), code.SUCCESS)
-		}
+	subjectParts := strings.Split(m.Subject, ".")
+	action := subjectParts[len(subjectParts)-1]
 
+	switch action {
 	case "status":
 		status, err := s.systemctlService.SystemdStatus(decoded.Name)
 		if err != nil {
@@ -79,6 +71,44 @@ func (s *Service) BiosSystemdCommand(m *nats.Msg) {
 			s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error showing property %s of service %s: %v", decoded.Property, decoded.Name, err))
 		} else {
 			s.publish(m.Reply, fmt.Sprintf("Service %s property %s: %s", decoded.Name, decoded.Property, result), code.SUCCESS)
+		}
+	default:
+		message := fmt.Sprintf("Unknown POST action in systemctl manager: %s", action)
+		log.Error().Msg(message)
+		s.handleError(m.Reply, code.UnknownCommand, message)
+	}
+}
+
+func (s *Service) handleSystemctlPost(m *nats.Msg) {
+	// Decode the incoming message into the Systemd struct
+	decoded, err := s.DecodeSystemd(m)
+	if decoded == nil || err != nil {
+		if decoded == nil {
+			s.handleError(m.Reply, code.ERROR, "failed to parse JSON")
+			return
+		}
+		s.handleError(m.Reply, code.ERROR, err.Error())
+		return
+	}
+	subjectParts := strings.Split(m.Subject, ".")
+	action := subjectParts[len(subjectParts)-1]
+	if decoded.Name == "" {
+		s.handleError(m.Reply, code.InvalidParams, "service name is required")
+		return
+	}
+	if decoded.Action == "" {
+		s.handleError(m.Reply, code.InvalidParams, "action is required, e.g., start, stop, restart, enable, disable, status, is-enabled, show")
+		return
+	}
+
+	// Switch based on the action provided
+	switch action {
+	case "start", "stop", "restart", "enable", "disable":
+		err := s.systemctlService.SystemdCommand(decoded.Name, decoded.Action)
+		if err != nil {
+			s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error performing %s on service %s: %v", decoded.Action, decoded.Name, err))
+		} else {
+			s.publish(m.Reply, fmt.Sprintf("Service %s %sed successfully", decoded.Name, decoded.Action), code.SUCCESS)
 		}
 
 	default:

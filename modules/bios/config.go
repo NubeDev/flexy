@@ -29,12 +29,12 @@ func (s *Service) SetupCLI() {
 			return err
 		}
 
-		s.globalUUID = s.Config.GetString("bios.id")
+		s.globalUUID = s.Config.GetString("id")
 		if s.globalUUID == "" {
 			return fmt.Errorf("id is not set in the configuration")
 		}
 
-		natsURL := s.Config.GetString("bios.nats_url")
+		natsURL := s.Config.GetString("nats_url")
 		if natsURL == "" {
 			natsURL = nats.DefaultURL
 		}
@@ -43,12 +43,12 @@ func (s *Service) SetupCLI() {
 		opts := &Opts{
 			GlobalUUID:      s.globalUUID,
 			NatsURL:         natsURL,
-			RootPath:        s.Config.GetString("bios.root_path"),
-			AppsPath:        fmt.Sprintf("%s/%s", s.Config.GetString("bios.root_path"), s.Config.GetString("bios.apps_path")),
-			SystemPath:      s.Config.GetString("bios.system_path"),
-			GitToken:        s.Config.GetString("bios.git_token"),
-			GitDownloadPath: s.Config.GetString("bios.git_download_path"),
-			ProxyNatsPort:   s.Config.GetInt("bios.proxy_port"),
+			RootPath:        s.Config.GetString("root_path"),
+			AppsPath:        fmt.Sprintf("%s/%s", s.Config.GetString("root_path"), s.Config.GetString("apps_path")),
+			SystemPath:      s.Config.GetString("system_path"),
+			GitToken:        s.Config.GetString("git_token"),
+			GitDownloadPath: s.Config.GetString("git_download_path"),
+			ProxyNatsPort:   s.Config.GetInt("proxy_port"),
 		}
 
 		// Initialize services using NewService
@@ -58,6 +58,7 @@ func (s *Service) SetupCLI() {
 
 		// Retrieve services from the configuration
 		s.services = s.Config.GetStringSlice("services")
+		s.description = s.Config.GetString("description")
 
 		return nil
 	}

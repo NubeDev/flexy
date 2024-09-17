@@ -1,18 +1,19 @@
 package githubdownloader
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
-	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
-	"github.com/go-resty/resty/v2"
+	"github.com/google/go-github/v49/github"
+	"golang.org/x/oauth2"
 )
 
+// RepoAsset holds information about a repository asset.
 type RepoAsset struct {
 	Owner string `json:"owner"`
 	Repo  string `json:"repo"`
@@ -21,14 +22,7 @@ type RepoAsset struct {
 	Token string `json:"token"`
 }
 
-// Release represents a GitHub release.
-type Release struct {
-	ID   int    `json:"id"`
-	Tag  string `json:"tag_name"`
-	Name string `json:"name"`
-}
-
-// Asset represents a release asset.
+// Asset represents a release asset with additional metadata.
 type Asset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
@@ -37,50 +31,77 @@ type Asset struct {
 
 // GitHubDownloader is a client for downloading GitHub releases.
 type GitHubDownloader struct {
-	client          *resty.Client
-	token           string
+	client          *github.Client
 	gitDownloadPath string
+	ctx             context.Context
 }
 
 // New creates a new GitHubDownloader instance.
 func New(token, gitDownloadPath string) *GitHubDownloader {
-	client := resty.New()
-	client.SetBaseURL("https://api.github.com")
-	client.SetHeader("Accept", "application/vnd.github+json")
-	client.SetHeader("User-Agent", "githubdownloader")
+	ctx := context.Background()
+	var httpClient *http.Client
 	if token != "" {
-		client.SetHeader("Authorization", fmt.Sprintf("token %s", token))
+		ts := oauth2.StaticTokenSource(
+			&oauth2.Token{AccessToken: token},
+		)
+		httpClient = oauth2.NewClient(ctx, ts)
 	}
+	client := github.NewClient(httpClient)
 
 	return &GitHubDownloader{
 		client:          client,
-		token:           token,
 		gitDownloadPath: gitDownloadPath,
+		ctx:             ctx,
 	}
 }
 
+// UpdateToken updates the authentication token and recreates the GitHub client.
 func (gd *GitHubDownloader) UpdateToken(token string) {
-	gd.token = token
+	var httpClient *http.Client
+	if token != "" {
+		ts := oauth2.StaticTokenSource(
+			&oauth2.Token{AccessToken: token},
+		)
+		httpClient = oauth2.NewClient(gd.ctx, ts)
+	}
+	gd.client = github.NewClient(httpClient)
 }
 
+// UpdateDownloadPath updates the download path for assets.
 func (gd *GitHubDownloader) UpdateDownloadPath(path string) {
 	gd.gitDownloadPath = path
 }
 
 // DownloadRelease downloads a GitHub release asset matching the specified architecture.
 func (gd *GitHubDownloader) DownloadRelease(owner, repo, tag, arch string) error {
-	assets, err := gd.ListAssetsByVersion(owner, repo, tag)
+	release, _, err := gd.client.Repositories.GetReleaseByTag(gd.ctx, owner, repo, tag)
 	if err != nil {
 		return err
 	}
 
+	// Get assets for the release.
+	opt := &github.ListOptions{PerPage: 100}
+	var allAssets []*github.ReleaseAsset
+
+	for {
+		assets, resp, err := gd.client.Repositories.ListReleaseAssets(gd.ctx, owner, repo, release.GetID(), opt)
+		if err != nil {
+			return err
+		}
+		allAssets = append(allAssets, assets...)
+		if resp.NextPage == 0 {
+			break
+		}
+		opt.Page = resp.NextPage
+	}
+
 	// Find the asset matching the architecture.
-	var assetFound *Asset
-	for _, asset := range assets {
-		if arch != "" && !strings.Contains(asset.Name, arch) {
+	var assetFound *github.ReleaseAsset
+	for _, asset := range allAssets {
+		if arch != "" && !strings.Contains(asset.GetName(), arch) {
 			continue
 		}
-		assetFound = &asset
+		assetFound = asset
 		break
 	}
 
@@ -97,35 +118,35 @@ func (gd *GitHubDownloader) DownloadRelease(owner, repo, tag, arch string) error
 	}
 
 	// Download the asset.
-	downloadURL := assetFound.BrowserDownloadURL
-
-	downloadClient := resty.New()
-	downloadClient.SetHeader("User-Agent", "githubdownloader")
-	if gd.token != "" {
-		downloadClient.SetHeader("Authorization", fmt.Sprintf("token %s", gd.token))
-	}
-
-	downloadResp, err := downloadClient.R().
-		SetDoNotParseResponse(true).
-		Get(downloadURL)
-
+	rc, redirectURL, err := gd.client.Repositories.DownloadReleaseAsset(gd.ctx, owner, repo, assetFound.GetID(), http.DefaultClient)
 	if err != nil {
 		return err
 	}
-	if downloadResp.StatusCode() != 200 {
-		return fmt.Errorf("failed to download asset: %s", downloadResp.Status())
+
+	var reader io.ReadCloser
+	if rc != nil {
+		reader = rc
+	} else if redirectURL != "" {
+		// Fallback for assets that require redirection.
+		resp, err := http.Get(redirectURL)
+		if err != nil {
+			return err
+		}
+		reader = resp.Body
+	} else {
+		return errors.New("failed to download asset")
 	}
-	defer downloadResp.RawBody().Close()
+	defer reader.Close()
 
 	// Save the file.
-	outputPath := filepath.Join(gd.gitDownloadPath, assetFound.Name)
+	outputPath := filepath.Join(gd.gitDownloadPath, assetFound.GetName())
 	outFile, err := os.Create(outputPath)
 	if err != nil {
 		return err
 	}
 	defer outFile.Close()
 
-	_, err = io.Copy(outFile, downloadResp.RawBody())
+	_, err = io.Copy(outFile, reader)
 	if err != nil {
 		return err
 	}
@@ -135,22 +156,34 @@ func (gd *GitHubDownloader) DownloadRelease(owner, repo, tag, arch string) error
 
 // ListAllAssets lists all assets across all releases.
 func (gd *GitHubDownloader) ListAllAssets(owner, repo string) ([]Asset, error) {
-	releases, err := gd.listAllReleases(owner, repo)
-	if err != nil {
-		return nil, err
-	}
+	opt := &github.ListOptions{PerPage: 100}
+	var allReleases []*github.RepositoryRelease
 
-	var allAssets []Asset
-	for _, release := range releases {
-		assets, err := gd.listAllAssetsForRelease(owner, repo, release.ID)
+	for {
+		releases, resp, err := gd.client.Repositories.ListReleases(gd.ctx, owner, repo, opt)
 		if err != nil {
 			return nil, err
 		}
-		// Add release tag to assets
-		for i := range assets {
-			assets[i].ReleaseTag = release.Tag
+		allReleases = append(allReleases, releases...)
+		if resp.NextPage == 0 {
+			break
 		}
-		allAssets = append(allAssets, assets...)
+		opt.Page = resp.NextPage
+	}
+
+	var allAssets []Asset
+	for _, release := range allReleases {
+		releaseAssets, err := gd.listAllAssetsForRelease(owner, repo, release.GetID())
+		if err != nil {
+			return nil, err
+		}
+		for _, asset := range releaseAssets {
+			allAssets = append(allAssets, Asset{
+				Name:               asset.GetName(),
+				BrowserDownloadURL: asset.GetBrowserDownloadURL(),
+				ReleaseTag:         release.GetTagName(),
+			})
+		}
 	}
 
 	return allAssets, nil
@@ -158,19 +191,23 @@ func (gd *GitHubDownloader) ListAllAssets(owner, repo string) ([]Asset, error) {
 
 // ListAssetsByVersion lists all assets for a specific release tag.
 func (gd *GitHubDownloader) ListAssetsByVersion(owner, repo, tag string) ([]Asset, error) {
-	release, err := gd.getReleaseByTag(owner, repo, tag)
+	release, _, err := gd.client.Repositories.GetReleaseByTag(gd.ctx, owner, repo, tag)
 	if err != nil {
 		return nil, err
 	}
 
-	assets, err := gd.listAllAssetsForRelease(owner, repo, release.ID)
+	releaseAssets, err := gd.listAllAssetsForRelease(owner, repo, release.GetID())
 	if err != nil {
 		return nil, err
 	}
 
-	// Add release tag to assets
-	for i := range assets {
-		assets[i].ReleaseTag = release.Tag
+	var assets []Asset
+	for _, asset := range releaseAssets {
+		assets = append(assets, Asset{
+			Name:               asset.GetName(),
+			BrowserDownloadURL: asset.GetBrowserDownloadURL(),
+			ReleaseTag:         release.GetTagName(),
+		})
 	}
 
 	return assets, nil
@@ -193,145 +230,22 @@ func (gd *GitHubDownloader) ListAssetsByArch(owner, repo, arch string) ([]Asset,
 	return filteredAssets, nil
 }
 
-// Helper method to get a release by tag.
-func (gd *GitHubDownloader) getReleaseByTag(owner, repo, tag string) (*Release, error) {
-	resp, err := gd.client.R().
-		SetPathParams(map[string]string{
-			"owner": owner,
-			"repo":  repo,
-			"tag":   tag,
-		}).
-		Get("/repos/{owner}/{repo}/releases/tags/{tag}")
-
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode() != 200 {
-		return nil, fmt.Errorf("failed to get release: %s", resp.Status())
-	}
-
-	var release Release
-	err = json.Unmarshal(resp.Body(), &release)
-	if err != nil {
-		return nil, err
-	}
-
-	return &release, nil
-}
-
-// Helper method to list all releases, handling pagination.
-func (gd *GitHubDownloader) listAllReleases(owner, repo string) ([]Release, error) {
-	var allReleases []Release
-	perPage := 30
-	page := 1
+// Helper method to list all assets for a release.
+func (gd *GitHubDownloader) listAllAssetsForRelease(owner, repo string, releaseID int64) ([]*github.ReleaseAsset, error) {
+	opt := &github.ListOptions{PerPage: 100}
+	var allAssets []*github.ReleaseAsset
 
 	for {
-		resp, err := gd.client.R().
-			SetPathParams(map[string]string{
-				"owner": owner,
-				"repo":  repo,
-			}).
-			SetQueryParams(map[string]string{
-				"per_page": fmt.Sprintf("%d", perPage),
-				"page":     fmt.Sprintf("%d", page),
-			}).
-			Get("/repos/{owner}/{repo}/releases")
-
+		assets, resp, err := gd.client.Repositories.ListReleaseAssets(gd.ctx, owner, repo, releaseID, opt)
 		if err != nil {
 			return nil, err
 		}
-		if resp.StatusCode() != 200 {
-			return nil, fmt.Errorf("failed to get releases: %s", resp.Status())
-		}
-
-		var releases []Release
-		err = json.Unmarshal(resp.Body(), &releases)
-		if err != nil {
-			return nil, err
-		}
-
-		if len(releases) == 0 {
-			break
-		}
-
-		allReleases = append(allReleases, releases...)
-
-		if !hasNextPage(resp.Header().Get("Link")) {
-			break
-		}
-		page++
-	}
-
-	return allReleases, nil
-}
-
-// Helper method to list all assets for a release, handling pagination.
-func (gd *GitHubDownloader) listAllAssetsForRelease(owner, repo string, releaseID int) ([]Asset, error) {
-	var allAssets []Asset
-	perPage := 30
-	page := 1
-
-	for {
-		resp, err := gd.client.R().
-			SetPathParams(map[string]string{
-				"owner":     owner,
-				"repo":      repo,
-				"releaseId": fmt.Sprintf("%d", releaseID),
-			}).
-			SetQueryParams(map[string]string{
-				"per_page": fmt.Sprintf("%d", perPage),
-				"page":     fmt.Sprintf("%d", page),
-			}).
-			Get("/repos/{owner}/{repo}/releases/{releaseId}/assets")
-
-		if err != nil {
-			return nil, err
-		}
-		if resp.StatusCode() != 200 {
-			return nil, fmt.Errorf("failed to get assets: %s", resp.Status())
-		}
-
-		var assets []Asset
-		err = json.Unmarshal(resp.Body(), &assets)
-		if err != nil {
-			return nil, err
-		}
-
-		if len(assets) == 0 {
-			break
-		}
-
 		allAssets = append(allAssets, assets...)
-
-		if !hasNextPage(resp.Header().Get("Link")) {
+		if resp.NextPage == 0 {
 			break
 		}
-		page++
+		opt.Page = resp.NextPage
 	}
 
 	return allAssets, nil
-}
-
-// Helper function to check if there is a next page in pagination.
-func hasNextPage(linkHeader string) bool {
-	if linkHeader == "" {
-		return false
-	}
-
-	links := parseLinkHeader(linkHeader)
-	_, hasNext := links["next"]
-	return hasNext
-}
-
-// Helper function to parse the Link header.
-func parseLinkHeader(header string) map[string]string {
-	links := make(map[string]string)
-	re := regexp.MustCompile(`<([^>]+)>;\s*rel="([^"]+)"`)
-	matches := re.FindAllStringSubmatch(header, -1)
-	for _, match := range matches {
-		if len(match) == 3 {
-			links[match[2]] = match[1]
-		}
-	}
-	return links
 }

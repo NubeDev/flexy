@@ -14,8 +14,20 @@ func (s *Service) DecodeGitRepoAsset(m *nats.Msg) (*githubdownloader.RepoAsset, 
 	if err := json.Unmarshal(m.Data, &cmd); err != nil {
 		return nil, fmt.Errorf("invalid JSON format: %v", err)
 	}
-	pprint.PrintJSON(cmd)
 	return &cmd, nil
+}
+
+func (s *Service) gitDownloader(m *nats.Msg) {
+	decoded, err := s.DecodeGitRepoAsset(m)
+	if decoded == nil || err != nil {
+		if decoded == nil {
+			s.handleError(m.Reply, code.ERROR, "failed to parse json")
+			return
+		}
+		s.handleError(m.Reply, code.ERROR, err.Error())
+		return
+	}
+
 }
 
 func (s *Service) gitDownloadAsset(m *nats.Msg) {
@@ -73,10 +85,16 @@ func (s *Service) gitListAllAssets(m *nats.Msg) {
 		s.handleError(m.Reply, code.InvalidParams, "repo is required")
 		return
 	}
+	if decoded.Token != "" {
+		s.githubDownloader.UpdateToken(decoded.Token)
+	}
+	pprint.PrintJSON(decoded)
 	resp, err := s.githubDownloader.ListAllAssets(decoded.Owner, decoded.Repo)
 	if err != nil {
 		s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error installing app: %v", err))
 	} else {
+		fmt.Println(1111)
+		pprint.PrintJSON(resp)
 		content, err := json.Marshal(resp)
 		if err != nil {
 			return

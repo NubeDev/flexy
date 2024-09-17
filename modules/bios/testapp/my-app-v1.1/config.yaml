@@ -1,0 +1,5 @@
+id: "app-abc"
+url: "nats://localhost:4222"
+
+service_file:
+  env: "-p 8080"

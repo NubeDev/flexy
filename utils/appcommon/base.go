@@ -1,16 +1,21 @@
 package appcommon
 
 import (
-	"github.com/nats-io/nats.go"
+	"github.com/NubeDev/flexy/utils/natlib"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 type App struct {
-	AppID    string
-	NatsConn *nats.Conn
-	Config   *viper.Viper
-	RootCmd  *cobra.Command
+	AppID       string
+	Description string
+	NatsConn    natlib.NatLib
+	Config      *viper.Viper
+	RootCmd     *cobra.Command
+}
+
+type Opts struct {
+	NatsConn natlib.NatLib
 }
 
 func NewApp() *App {

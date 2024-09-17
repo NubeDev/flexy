@@ -15,6 +15,7 @@ type SubjectBuilder struct {
 	subjectType string
 }
 
+const globalName = "global"
 const IsApp = "app"
 const IsProxy = "proxy"
 const IsBios = "bios"
@@ -29,6 +30,14 @@ func NewSubjectBuilder(globalUUID, appID string, subjectType string) *SubjectBui
 		AppID:       appID,
 		subjectType: subjectType,
 	}
+}
+
+func (sb *SubjectBuilder) GlobalSubject(action, resource, scope string) string {
+	return fmt.Sprintf("%s.%s.%s.%s", globalName, action, resource, scope)
+}
+
+func (sb *SubjectBuilder) AddGlobalUUID(subject string) string {
+	return fmt.Sprintf("%s.%s", sb.GlobalUUID, subject)
 }
 
 // BuildSubject builds a NATS subject based on the proxy usage

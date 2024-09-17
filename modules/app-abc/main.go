@@ -3,7 +3,10 @@ package main
 import (
 	"fmt"
 	"github.com/NubeDev/flexy/utils/appcommon"
+	"github.com/NubeDev/flexy/utils/code"
+	"github.com/NubeDev/flexy/utils/natlib"
 	"github.com/nats-io/nats.go"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"os"
 	"os/signal"
@@ -48,11 +51,6 @@ func (inst *App) RunApp() {
 	fmt.Printf("App '%s' is running\n", inst.app.AppID)
 
 	// Setup NATS subscriptions and responders
-	if err := inst.SetupSubscriptions(); err != nil {
-		fmt.Println("Error setting up subscriptions:", err)
-		return
-	}
-
 	if err := inst.SetupResponders(); err != nil {
 		fmt.Println("Error setting up responders:", err)
 		return
@@ -62,40 +60,30 @@ func (inst *App) RunApp() {
 	inst.WaitForShutdown()
 }
 
-func (inst *App) SetupSubscriptions() error {
-	// Subscribe to the "put.ufw" topic
-	_, err := inst.app.Subscribe("put", "ufw", inst.HandleSubscriptionMessage)
-	if err != nil {
-		return fmt.Errorf("error subscribing to put.ufw: %w", err)
-	}
-	return nil
-}
-
 func (inst *App) HandleSubscriptionMessage(msg *nats.Msg) {
 	fmt.Printf("Received message on %s: %s\n", msg.Subject, string(msg.Data))
 }
 
 func (inst *App) SetupResponders() error {
-	// Subscribe to the "get.ufw" topic and respond to requests
-	_, err := inst.app.Respond("get", "ufw", inst.HandleRequestMessage)
+	// Use global subject for ping
+	err := inst.app.NatsConn.SubscribeWithRespond("global.get.system.ping", inst.globalPing, nil)
 	if err != nil {
-		return fmt.Errorf("error setting up responder for get.ufw: %w", err)
+		return fmt.Errorf("error subscribing to global.get.system.ping: %w", err)
 	}
 	return nil
 }
 
-func (inst *App) handlePing(msg *nats.Msg) []byte {
-	fmt.Printf("Received request on %s: %s\n", msg.Subject, string(msg.Data))
-	// Process the request and return a response
-	response := []byte(fmt.Sprintf("Hello back with: %s", string(msg.Data)))
-	return response
-}
+func (inst *App) globalPing(msg *nats.Msg) ([]byte, error) {
+	// Create a Ping response in JSON format
+	response := natlib.NewResponse(code.SUCCESS, inst.app.AppID, natlib.Args{Description: inst.app.Description})
+	// Marshal to JSON and handle error
+	jsonResponse, err := response.ToJSONError()
+	if err != nil {
+		log.Error().Msgf("Error converting ping to JSON: %v", err)
+		return nil, err
+	}
 
-func (inst *App) HandleRequestMessage(msg *nats.Msg) []byte {
-	fmt.Printf("Received request on %s: %s\n", msg.Subject, string(msg.Data))
-	// Process the request and return a response
-	response := []byte(fmt.Sprintf("Hello back with: %s", string(msg.Data)))
-	return response
+	return jsonResponse, nil
 }
 
 func (inst *App) WaitForShutdown() {

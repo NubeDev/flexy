@@ -2,25 +2,23 @@ package rqlclient
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	model "github.com/NubeDev/flexy/app/models"
 	hostService "github.com/NubeDev/flexy/app/services/v1/host"
 	githubdownloader "github.com/NubeDev/flexy/utils/gitdownloader"
+	"github.com/NubeDev/flexy/utils/natlib"
 	"github.com/NubeDev/flexy/utils/subjects"
-	"github.com/rs/zerolog/log"
-
-	"sync"
-	"time"
-
 	"github.com/nats-io/nats.go"
+	"github.com/rs/zerolog/log"
+	"time"
 )
 
 // Client struct to hold the NATS connection
 type Client struct {
-	natsClient         *nats.Conn
+	natsConn           *nats.Conn
 	biosSubjectBuilder *subjects.SubjectBuilder
 	gitDownloader      *githubdownloader.GitHubDownloader
+	natsClient         natlib.NatLib
 }
 
 // New initializes a new Client
@@ -30,8 +28,9 @@ func New(natsURL, globalUUID string) (*Client, error) {
 		return nil, fmt.Errorf("failed to connect to NATS: %v", err)
 	}
 	return &Client{
-		natsClient:         nc,
+		natsConn:           nc,
 		biosSubjectBuilder: subjects.NewSubjectBuilder(globalUUID, "bios", subjects.IsBios),
+		natsClient:         natlib.New(natlib.NewOpts{}),
 	}, nil
 }
 
@@ -46,7 +45,7 @@ func (inst *Client) sendNATSRequest(clientUUID, script string, timeout time.Dura
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request payload: %v", err)
 	}
-	msg, err := inst.natsClient.Request(subject, reqData, timeout)
+	msg, err := inst.natsConn.Request(subject, reqData, timeout)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %v", err)
 	}
@@ -66,7 +65,7 @@ func (inst *Client) biosCommandRequest(body map[string]string, action, entity, o
 	subject := inst.biosSubjectBuilder.BuildSubject(action, entity, op)
 	log.Info().Msgf("bios-command nats subject: %s", subject)
 	// Send the request
-	request, err := inst.natsClient.Request(subject, requestData, timeout)
+	request, err := inst.natsConn.Request(subject, requestData, timeout)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %v", err)
 	}
@@ -81,75 +80,25 @@ func (inst *Client) biosCommandRequest(body map[string]string, action, entity, o
 	return statusResp, nil
 }
 
-// PingHostAllCore pings all hosts and collects responses from multiple clients.
-func (inst *Client) PingHostAllCore() ([]string, error) {
-	responseChan := make(chan string, 10) // buffer of 10, can be adjusted
-	var wg sync.WaitGroup
-	var mu sync.Mutex // Mutex to prevent race conditions
-
-	// Subscribe to the shared response subject (module.global.response)
-	sub, err := inst.natsClient.SubscribeSync("module.global.response")
+func (inst *Client) PingHostAllCore(timeout time.Duration) ([]natlib.Response, error) {
+	data := []byte("ping")
+	all, err := inst.natsClient.RequestAll("global.get.system.ping", data, timeout)
 	if err != nil {
 		return nil, err
 	}
-	defer sub.Unsubscribe()
-
-	// Publish the request to the shared subject (module.global)
-	err = inst.natsClient.Publish("module.global.ping", []byte("hello"))
-	if err != nil {
-		return nil, err
-	}
-
-	// Set a timeout for collecting responses
-	timeout := time.NewTimer(5 * time.Second)
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for {
-			select {
-			case <-timeout.C:
-				return
-			default:
-				// Wait for the next message with a short timeout
-				msg, err := sub.NextMsg(1 * time.Second)
-				if errors.Is(err, nats.ErrTimeout) {
-					continue
-				}
-				if err != nil {
-					log.Error().Msgf("Error receiving message: %v", err)
-					return
-				}
-				if msg != nil && len(msg.Data) > 0 {
-					// Lock access to the response slice to prevent race condition
-					mu.Lock()
-					responseChan <- string(msg.Data)
-					mu.Unlock()
-				}
-			}
-		}
-	}()
-
-	go func() {
-		wg.Wait()
-		close(responseChan)
-	}()
-
-	// Collect the responses
-	var responses []string
-	for res := range responseChan {
-		if res != "" {
-			mu.Lock() // Lock the slice while appending to prevent race condition
-			responses = append(responses, res)
-			mu.Unlock()
+	var out []natlib.Response
+	for _, msg := range all {
+		var m natlib.Response
+		err := json.Unmarshal(msg.Data, &m)
+		if err == nil {
+			out = append(out, m)
 		}
 	}
-
-	return responses, nil
+	return out, nil
 }
 
 func (inst *Client) ModuleHelp(clientUUID, moduleUUID string, args []string, timeout time.Duration) (interface{}, error) {
-	request, err := inst.natsClient.Request("subject", []byte(""), timeout)
+	request, err := inst.natsConn.Request("subject", []byte(""), timeout)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %v", err)
 	}

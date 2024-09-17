@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/NubeDev/flexy/utils/systemctl"
 	"github.com/rs/zerolog/log"
+	"gopkg.in/yaml.v3"
 	"io"
 	"io/ioutil"
 	"os"
@@ -13,6 +14,19 @@ import (
 	"regexp"
 	"strings"
 )
+
+type ManagerInterface interface {
+	ListLibraryApps() ([]*App, error)
+	ListInstalledApps() ([]*App, error)
+	Install(app *App) error
+	Uninstall(app *App) error
+	DeleteSystemFile(appName string) error
+	DeleteApp(appName string) error
+	DeleteAppBackup(appName string) error
+	DeleteLibraryApp(appName string) error
+	RestoreBackup(name, version string) error
+	ListBackups() ([]*App, error)
+}
 
 type AppManager struct {
 	LibraryPath      string // Path to the library directory (e.g., data/library)
@@ -30,8 +44,18 @@ type App struct {
 	Version string `json:"version"`
 }
 
+type Config struct {
+	ID          string          `yaml:"id"`
+	URL         string          `yaml:"url"`
+	ServiceFile ServiceFileYAML `yaml:"service_file"`
+}
+
+type ServiceFileYAML struct {
+	Env string `yaml:"env"`
+}
+
 // NewAppManager creates a new AppManager instance
-func NewAppManager(rootPath, systemPath string) (*AppManager, error) {
+func NewAppManager(rootPath, systemPath string) (ManagerInterface, error) {
 	var libraryPath = "library"
 	var installPath = "installed"
 	var backupPath = "backups"
@@ -85,7 +109,7 @@ func getAppsFromDir(dir string) ([]*App, error) {
 		return nil, err
 	}
 	// Regex to capture version strings with "v" prefix and additional qualifiers (e.g., rc, beta, etc.)
-	versionRegex := regexp.MustCompile(`v?\d+(\.\d+)*([.-][a-zA-Z0-9]+)*`)
+	versionRegex := regexp.MustCompile(`v\d+(\.\d+)*`)
 	var apps []*App
 	for _, file := range files {
 		if filepath.Ext(file.Name()) == ".zip" {
@@ -147,7 +171,7 @@ func (inst *AppManager) ListInstalledApps() ([]*App, error) {
 // Install installs the specified app version
 func (inst *AppManager) Install(app *App) error {
 	if app == nil {
-		return errors.New("app can not bre empty")
+		return errors.New("app cannot be empty")
 	}
 	var appName = app.Name
 	var version = app.Version
@@ -165,18 +189,31 @@ func (inst *AppManager) Install(app *App) error {
 		return err
 	}
 
-	// Step 3: Unzip the new app to the install directory with the correct structure
-	if err := inst.unzipApp(zipFilePath, installPath, appName, version); err != nil {
-		return fmt.Errorf("failed to unzip app: %w", err)
+	// Step 3: Extract the binary
+	if err := inst.unzipApp(zipFilePath, installPath, appName); err != nil {
+		return fmt.Errorf("failed to extract binary: %w", err)
 	}
-
-	// Step 4: Generate systemd service file
-	err := inst.createSystemdService(appName, installPath, version)
+	// Step 4: Extract config.yaml if exists
+	configFilePath, err := inst.extractConfigFile(zipFilePath, installPath)
+	if err != nil {
+		return fmt.Errorf("failed to extract config.yaml: %w", err)
+	}
+	// Step 5: Parse config.yaml
+	var config *Config
+	if configFilePath != "" {
+		log.Info().Msgf("transfer config file: %s", configFilePath)
+		config, err = inst.parseConfigFile(configFilePath)
+		if err != nil {
+			return fmt.Errorf("failed to parse config.yaml: %w", err)
+		}
+	}
+	// Step 6: Generate systemd service file
+	err = inst.createSystemdService(appName, installPath, version, config)
 	if err != nil {
 		return fmt.Errorf("failed to generate systemctl service file: %w", err)
 	}
 
-	// Step 5: Move service file and enable it
+	// Step 7: Move service file and enable it
 	if err := inst.setupAndStartService(appName); err != nil {
 		return fmt.Errorf("failed to setup and start service: %w", err)
 	}
@@ -237,7 +274,7 @@ func (inst *AppManager) DeleteSystemFile(appName string) error {
 		return fmt.Errorf("failed to remove system file for app %s: %w", appName, err)
 	}
 
-	fmt.Printf("System file for app %s successfully deleted.\n", appName)
+	log.Info().Msgf("System file for app %s successfully deleted.", appName)
 	return nil
 }
 
@@ -255,7 +292,7 @@ func (inst *AppManager) DeleteApp(appName string) error {
 		return fmt.Errorf("failed to remove install directory for app %s: %w", appName, err)
 	}
 
-	fmt.Printf("Install directory for app %s successfully deleted.\n", appName)
+	log.Info().Msgf("Install directory for app %s successfully deleted.", appName)
 	return nil
 }
 
@@ -273,7 +310,7 @@ func (inst *AppManager) DeleteAppBackup(appName string) error {
 		return fmt.Errorf("failed to remove backup directory for app %s: %w", appName, err)
 	}
 
-	fmt.Printf("Backup directory for app %s successfully deleted.\n", appName)
+	log.Info().Msgf("Backup directory for app %s successfully deleted. ", appName)
 	return nil
 }
 
@@ -295,11 +332,61 @@ func (inst *AppManager) DeleteLibraryApp(appName string) error {
 				return fmt.Errorf("failed to remove library file for app %s: %w", appName, err)
 			}
 
-			fmt.Printf("Library file %s for app %s successfully deleted.\n", file.Name(), appName)
+			log.Info().Msgf("Library file %s for app %s successfully deleted. ", file.Name(), appName)
 		}
 	}
 
 	return nil
+}
+
+// RestoreBackup restores a specific app version from the backup directory
+func (inst *AppManager) RestoreBackup(name, version string) error {
+	backupPath := filepath.Join(inst.BackupPath, name, version)
+	installPath := filepath.Join(inst.InstallPath, name, version)
+
+	// Check if the backup exists
+	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
+		return fmt.Errorf("backup for app %s version %s not found", name, version)
+	}
+
+	// Stop and remove old app version (if exists)
+	if err := inst.stopAndRemoveOldApp(name); err != nil {
+		return err
+	}
+
+	// Restore the app from the backup directory
+	err := filepath.Walk(backupPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		relPath, err := filepath.Rel(backupPath, path)
+		if err != nil {
+			return err
+		}
+		destPath := filepath.Join(installPath, relPath)
+
+		if info.IsDir() {
+			return os.MkdirAll(destPath, info.Mode())
+		}
+
+		return copyFile(path, destPath)
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to restore app %s version %s: %w", name, version, err)
+	}
+
+	// Setup and start the service after restoring
+	if err := inst.setupAndStartService(name); err != nil {
+		return fmt.Errorf("failed to setup and start service: %w", err)
+	}
+
+	return nil
+}
+
+// ListBackups lists all the available app backups
+func (inst *AppManager) ListBackups() ([]*App, error) {
+	return getAppsFromDir(inst.BackupPath)
 }
 
 // stopAndRemoveOldApp stops and removes an old app version (if exists)
@@ -316,10 +403,10 @@ func (inst *AppManager) deleteSystemdService(appName string) error {
 		if err := os.Remove(serviceFilePath); err != nil {
 			return fmt.Errorf("failed to delete service file: %w", err)
 		}
-		fmt.Printf("Deleted systemd service file: %s\n", serviceFilePath)
+		log.Info().Msgf("Deleted systemd service file: %s ", serviceFilePath)
 	} else if os.IsNotExist(err) {
 		// Service file does not exist, nothing to delete
-		fmt.Printf("Systemd service file %s does not exist, skipping deletion\n", serviceFilePath)
+		log.Info().Msgf("Systemd service file %s does not exist, skipping deletion ", serviceFilePath)
 	} else {
 		return err
 	}
@@ -339,7 +426,7 @@ func (inst *AppManager) stopAndDisableService(appName string) error {
 }
 
 // unzipApp unzips the app from a zip file into the correct install directory structure
-func (inst *AppManager) unzipApp(zipFilePath, destPath, appName, version string) error {
+func (inst *AppManager) unzipApp(zipFilePath, destPath, appName string) error {
 	reader, err := zip.OpenReader(zipFilePath)
 	if err != nil {
 		return err
@@ -347,38 +434,92 @@ func (inst *AppManager) unzipApp(zipFilePath, destPath, appName, version string)
 	defer reader.Close()
 
 	// Ensure the destination directory exists
-	fmt.Println("INSTALL DIR", destPath)
 	if err := os.MkdirAll(destPath, os.ModePerm); err != nil {
 		return err
 	}
 
-	// Extract the files directly into destPath (without creating additional directories)
+	var binaryExtracted bool
+
+	// Extract the binary file
 	for _, file := range reader.File {
 		if file.FileInfo().IsDir() {
-			continue // Skip directories, no need to create them
+			continue // Skip directories
 		}
 
-		// Extract the file directly to destPath, ignoring the zip's internal folder structure
-		fpath := filepath.Join(destPath, filepath.Base(file.Name))
-
-		// Extract the file
-		if err := extractFile(file, fpath); err != nil {
-			return err
-		}
-		if file.Name != appName {
-			newBinaryPath := filepath.Join(destPath, appName)
-			if err := os.Rename(fpath, newBinaryPath); err != nil {
+		if file.Name == appName || filepath.Ext(file.Name) == "" {
+			// Extract the file to destPath
+			fpath := filepath.Join(destPath, appName)
+			if err := extractFile(file, fpath); err != nil {
 				return err
 			}
-		}
-		newBinaryPath := filepath.Join(destPath, appName)
-		if err := inst.setExecutable(newBinaryPath); err != nil {
-			return err
-		}
 
+			// Set as executable
+			if err := inst.setExecutable(fpath); err != nil {
+				return err
+			}
+
+			binaryExtracted = true
+			break
+		}
+	}
+
+	if !binaryExtracted {
+		return fmt.Errorf("binary file not found in zip")
 	}
 
 	return nil
+}
+
+func (inst *AppManager) extractConfigFile(zipFilePath, destPath string) (string, error) {
+	// Open the zip file
+	reader, err := zip.OpenReader(zipFilePath)
+	if err != nil {
+		return "", err
+	}
+	defer reader.Close()
+
+	// Get the folder name from the zip file (without the .zip extension)
+	zipFolderName := strings.TrimSuffix(filepath.Base(zipFilePath), filepath.Ext(zipFilePath))
+
+	var configFilePath string
+
+	// Iterate through files in the zip archive
+	for _, file := range reader.File {
+		// Check if the file path matches the expected format: <zipFolderName>/config.yaml
+		expectedConfigPath := filepath.Join(zipFolderName, "config.yaml")
+		if file.Name == expectedConfigPath {
+			// Extract config.yaml to destPath
+			fpath := filepath.Join(destPath, filepath.Base(file.Name))
+			if err := extractFile(file, fpath); err != nil {
+				return "", err
+			}
+			configFilePath = fpath
+			break
+		}
+	}
+
+	if configFilePath == "" {
+		//return "", fmt.Errorf("config.yaml not found in the zip file")
+	}
+
+	return configFilePath, nil
+}
+
+func (inst *AppManager) parseConfigFile(configFilePath string) (*Config, error) {
+	var config *Config
+
+	// Read and parse config.yaml
+	configData, err := os.ReadFile(configFilePath)
+	if err != nil {
+		return config, err
+	}
+
+	err = yaml.Unmarshal(configData, &config)
+	if err != nil {
+		return config, err
+	}
+
+	return config, nil
 }
 
 // extractFile extracts a single file from a zip archive
@@ -402,7 +543,7 @@ func extractFile(file *zip.File, dest string) error {
 }
 
 // createSystemdService creates a systemd service file for the app
-func (inst *AppManager) createSystemdService(appName, execPath, version string) error {
+func (inst *AppManager) createSystemdService(appName, execPath, version string, config *Config) error {
 	serviceFile := &systemctl.ServiceFile{
 		Name:                        appName,
 		Version:                     version,
@@ -414,7 +555,17 @@ func (inst *AppManager) createSystemdService(appName, execPath, version string) 
 		EnvironmentVars:             nil,
 		FileNameWithVersion:         false,
 	}
-	// Move the service file to /etc/systemd/system/
+
+	if config != nil {
+		// Use data from config to populate serviceFile
+		if config.ServiceFile.Env != "" {
+			serviceFile.EnvironmentVars = []string{config.ServiceFile.Env}
+		}
+		// serviceFile.ServiceDescription = config.ServiceDescription
+		// serviceFile.RunAsUser = config.RunAsUser
+	}
+
+	// Generate and move the service file
 	_, err := systemctl.GenerateServiceFile(serviceFile, inst.SystemPath)
 	return err
 }

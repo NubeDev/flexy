@@ -2,12 +2,13 @@ package githubdownloader
 
 import (
 	"fmt"
+	"github.com/NubeDev/flexy/utils/helpers/pprint"
 	"testing"
 )
 
 func TestDownloadRelease(t *testing.T) {
-	owner := "NubeIO"
-	repo := "driver-bacnet"
+	owner := "NubeDev"
+	repo := "flexy-app"
 	tag := "v1.0.1"
 	arch := "armv7" // armv7 or amd64.
 	token := ""
@@ -16,11 +17,12 @@ func TestDownloadRelease(t *testing.T) {
 	downloader := New(token, dir)
 
 	// List all assets across all releases
-	//allAssets, err := downloader.ListAllAssets(owner, repo)
-	//if err != nil {
-	//	fmt.Printf("Error listing all assets: %v\n", err)
-	//	return
-	//}
+	allAssets, err := downloader.ListAllAssets(owner, repo)
+	if err != nil {
+		fmt.Printf("Error listing all assets: %v\n", err)
+		return
+	}
+	pprint.PrintJSON(allAssets)
 	//
 	//fmt.Println("All available assets across all releases:")
 	//for _, asset := range allAssets {
@@ -52,7 +54,7 @@ func TestDownloadRelease(t *testing.T) {
 	//}
 
 	// Download release
-	err := downloader.DownloadRelease(owner, repo, tag, arch)
+	err = downloader.DownloadRelease(owner, repo, tag, arch)
 	if err != nil {
 		fmt.Printf("\nError downloading release: %v\n", err)
 	} else {

@@ -119,11 +119,11 @@ var createHostCmd = &cobra.Command{
 }
 
 var modulesPing = &cobra.Command{
-	Use:   "ping-all-modules",
-	Short: "Ping all the modules",
+	Use:   "global-apps-ping",
+	Short: "Ping all the apps",
 	Run: func(cmd *cobra.Command, args []string) {
 		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
-			resp, err := client.PingHostAllCore()
+			resp, err := client.PingHostAllCore(timeout)
 			if err != nil {
 				return err
 			}
@@ -189,7 +189,7 @@ var appInstalled = &cobra.Command{
 }
 
 var appList = &cobra.Command{
-	Use:   "apps-list",
+	Use:   "apps-library",
 	Short: "List all available apps from the library that can be installed",
 	Run: func(cmd *cobra.Command, args []string) {
 		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
@@ -204,9 +204,9 @@ var appList = &cobra.Command{
 }
 
 // go run main.go --url=nats://localhost:4222 --client-uuid=abc systemctl my-app start
-var systemCTL = &cobra.Command{
+var systemctlAction = &cobra.Command{
 	Use:   "systemctl",
-	Short: "Run systemd/systemctl commands",
+	Short: "Run systemd/systemctl commands eg; start, stop, restart, enable, disable",
 	Run: func(cmd *cobra.Command, args []string) {
 		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
 			if len(args) < 2 {
@@ -219,7 +219,33 @@ var systemCTL = &cobra.Command{
 				property = args[2]
 			}
 
-			resp, err := client.BiosSystemdCommand(service, action, property, timeout)
+			resp, err := client.BiosSystemdCommandPost(service, action, property, timeout)
+			if err != nil {
+				return err
+			}
+			pprint.PrintJSON(resp)
+			return nil
+		})
+	},
+}
+
+// go run main.go --url=nats://localhost:4222 --client-uuid=abc systemctl my-app start
+var systemctlStatus = &cobra.Command{
+	Use:   "systemctl",
+	Short: "Run systemd/systemctl commands eg; status, is-enabled",
+	Run: func(cmd *cobra.Command, args []string) {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
+			if len(args) < 2 {
+				return fmt.Errorf("not enough arguments: service and action are required. eg my-service start")
+			}
+			service := args[0]
+			action := args[1]
+			var property string
+			if len(args) > 2 {
+				property = args[2]
+			}
+
+			resp, err := client.BiosSystemdCommandGet(service, action, property, timeout)
 			if err != nil {
 				return err
 			}
@@ -254,6 +280,31 @@ var downloadReleaseCmd = &cobra.Command{
 	},
 }
 
+var listGitReleaseCmd = &cobra.Command{
+	Use:   "list-release",
+	Short: "Download a GitHub release asset",
+	Long:  `Download a GitHub release asset by specifying owner, repo, tag, architecture, and other options.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
+			if len(args) < 3 {
+				return fmt.Errorf("not enough arguments, required: owner, repo, tag, arch, token")
+			}
+			owner := args[0]
+			repo := args[1]
+			tag := args[2]
+			arch := args[3]
+			token := args[4]
+
+			resp, err := client.GitListAsset(owner, repo, tag, arch, token, timeout)
+			if err != nil {
+				return err
+			}
+			pprint.PrintJSON(resp)
+			return nil
+		})
+	},
+}
+
 func init() {
 	// Define persistent flags common to all commands
 	rootCmd.PersistentFlags().StringVarP(&natsURL, "url", "u", "nats://localhost:4222", "NATS server URL")
@@ -265,6 +316,7 @@ func init() {
 
 	// Add the new command to rootCmd
 	rootCmd.AddCommand(downloadReleaseCmd)
+	rootCmd.AddCommand(listGitReleaseCmd)
 
 	// Add createHostCmd as a subcommand
 	rootCmd.AddCommand(createHostCmd)
@@ -280,7 +332,8 @@ func init() {
 	rootCmd.AddCommand(appUninstall)
 	rootCmd.AddCommand(appList)
 	rootCmd.AddCommand(appInstalled)
-	rootCmd.AddCommand(systemCTL)
+	rootCmd.AddCommand(systemctlAction)
+	rootCmd.AddCommand(systemctlStatus)
 
 }
 

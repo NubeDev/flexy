@@ -7,6 +7,7 @@ import (
 	"github.com/NubeDev/flexy/modules/bios/appmanager"
 	"github.com/NubeDev/flexy/utils/code"
 	githubdownloader "github.com/NubeDev/flexy/utils/gitdownloader"
+	"github.com/NubeDev/flexy/utils/natlib"
 	"github.com/NubeDev/flexy/utils/subjects"
 	"github.com/NubeDev/flexy/utils/systemctl"
 	"github.com/nats-io/nats.go"
@@ -29,21 +30,23 @@ type App struct {
 // Service struct to handle NATS and file operations
 type Service struct {
 	globalUUID         string
+	description        string
 	gitDownloadPath    string
+	natsClient         natlib.NatLib
 	natsConn           *nats.Conn
 	natsStore          *natsrouter.NatsRouter
 	systemctlService   systemctl.Commands
-	appManager         *appmanager.AppManager
+	appManager         appmanager.ManagerInterface
 	biosSubjectBuilder *subjects.SubjectBuilder
 	githubDownloader   *githubdownloader.GitHubDownloader
 	services           []string
 	Config             *viper.Viper
 	RootCmd            *cobra.Command
+	natsSubjects       []string
 }
 
 type Opts struct {
-	GlobalUUID string
-
+	GlobalUUID      string
 	NatsURL         string
 	RootPath        string
 	AppsPath        string
@@ -88,6 +91,7 @@ func (s *Service) NewService(opts *Opts) error {
 	s.appManager = appManager
 	s.biosSubjectBuilder = subjects.NewSubjectBuilder(globalUUID, "bios", subjects.IsBios)
 	s.githubDownloader = githubdownloader.New(gitToken, gitDownloadPath)
+	s.natsClient = natlib.New(natlib.NewOpts{})
 
 	return nil
 }
@@ -97,7 +101,7 @@ func (s *Service) handleError(reply string, responseCode int, details string) {
 	response := map[string]interface{}{
 		"code":    responseCode,
 		"message": code.GetMsg(responseCode),
-		"details": details,
+		"payload": details,
 	}
 	respJSON, _ := json.Marshal(response)
 	s.natsConn.Publish(reply, respJSON)
@@ -108,10 +112,20 @@ func (s *Service) publish(reply string, content string, responseCode int) {
 	response := map[string]interface{}{
 		"code":    responseCode,
 		"message": code.GetMsg(responseCode),
-		"content": content,
+		"payload": content,
 	}
 	respJSON, _ := json.Marshal(response)
 	s.natsConn.Publish(reply, respJSON)
+}
+
+func (s *Service) responded(content string, responseCode int) []byte {
+	response := map[string]interface{}{
+		"code":    responseCode,
+		"message": code.GetMsg(responseCode),
+		"payload": content,
+	}
+	respJSON, _ := json.Marshal(response)
+	return respJSON
 }
 
 // DecodeApps decodes the incoming NATS message into a Command struct
@@ -140,80 +154,8 @@ func (s *Service) GetCommandValue(cmd *Command, key string) (string, error) {
 	return value, nil
 }
 
-func (s *Service) handlePing(m *nats.Msg) {
-	s.publish(m.Reply, "PONG", code.SUCCESS)
-}
-
-func (s *Service) handleListLibraryApps(m *nats.Msg) {
-	apps, err := s.appManager.ListLibraryApps()
-	if err != nil {
-		s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error listing library apps: %v", err))
-		return
-	}
-	respJSON, _ := json.Marshal(apps)
-	s.publish(m.Reply, string(respJSON), code.SUCCESS)
-}
-
-func (s *Service) handleListInstalledApps(m *nats.Msg) {
-	apps, err := s.appManager.ListInstalledApps()
-	if err != nil {
-		s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error listing installed apps: %v", err))
-		return
-	}
-	respJSON, _ := json.Marshal(apps)
-	s.publish(m.Reply, string(respJSON), code.SUCCESS)
-}
-
-func (s *Service) handleInstallApp(m *nats.Msg) {
-	decoded, err := s.DecodeApps(m)
-	if decoded == nil || err != nil {
-		if decoded == nil {
-			s.handleError(m.Reply, code.ERROR, "failed to parse json")
-			return
-		}
-		s.handleError(m.Reply, code.ERROR, err.Error())
-		return
-	}
-	if decoded.Name == "" {
-		s.handleError(m.Reply, code.InvalidParams, "app name is required")
-		return
-	}
-	if decoded.Version == "" {
-		s.handleError(m.Reply, code.InvalidParams, "app version is required")
-		return
-	}
-	app := &appmanager.App{Name: decoded.Name, Version: decoded.Version}
-	err = s.appManager.Install(app)
-	if err != nil {
-		s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error installing app: %v", err))
-	} else {
-		s.publish(m.Reply, fmt.Sprintf("App %s version %s installed", decoded.Name, decoded.Version), code.SUCCESS)
-	}
-}
-
-func (s *Service) handleUninstallApp(m *nats.Msg) {
-	decoded, err := s.DecodeApps(m)
-	if decoded == nil || err != nil {
-		if decoded == nil {
-			s.handleError(m.Reply, code.ERROR, "failed to parse json")
-			return
-		}
-		s.handleError(m.Reply, code.ERROR, err.Error())
-		return
-	}
-	if decoded.Name == "" {
-		s.handleError(m.Reply, code.InvalidParams, "app name is required")
-		return
-	}
-	if decoded.Version == "" {
-		s.handleError(m.Reply, code.InvalidParams, "app version is required")
-		return
-	}
-	app := &appmanager.App{Name: decoded.Name, Version: decoded.Version}
-	err = s.appManager.Uninstall(app)
-	if err != nil {
-		s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error uninstalling app: %v", err))
-	} else {
-		s.publish(m.Reply, fmt.Sprintf("App %s version %s uninstalled", decoded.Name, decoded.Version), code.SUCCESS)
-	}
+func (s *Service) handlePing(m *nats.Msg) ([]byte, error) {
+	//return s.responded(fmt.Sprintf("pong from service: %s", s.globalUUID), code.SUCCESS), nil
+	response := natlib.NewResponse(code.SUCCESS, s.globalUUID, natlib.Args{Description: s.description})
+	return response.ToJSON(), nil
 }

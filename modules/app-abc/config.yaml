@@ -1,2 +1,9 @@
 id: "app-abc"
+description: "a demo application"
 url: "nats://localhost:4222"
+
+service_file:
+  env: "g=/data/bacnet-server-c"
+  attach_working_dir_on_exec_start: true
+
+
