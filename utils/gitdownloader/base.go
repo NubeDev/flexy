@@ -1,12 +1,14 @@
 package githubdownloader
 
 import (
+	"archive/zip"
 	"context"
-	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/google/go-github/v49/github"
@@ -26,7 +28,11 @@ type RepoAsset struct {
 type Asset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
+	ZipDownloadURL     string `json:"zip_download_url"`
+	AssetID            int64  `json:"asset_id"`
 	ReleaseTag         string `json:"release_tag"`
+	Version            string `json:"version"`
+	Arch               string `json:"arch"`
 }
 
 // GitHubDownloader is a client for downloading GitHub releases.
@@ -72,118 +78,261 @@ func (gd *GitHubDownloader) UpdateDownloadPath(path string) {
 	gd.gitDownloadPath = path
 }
 
-// DownloadRelease downloads a GitHub release asset matching the specified architecture.
-func (gd *GitHubDownloader) DownloadRelease(owner, repo, tag, arch string) error {
-	release, _, err := gd.client.Repositories.GetReleaseByTag(gd.ctx, owner, repo, tag)
+// DownloadRelease downloads the specified release zip (using the zipball URL),
+// unzips it, and rezips it without the outer folder. It saves the final zip file
+// to the provided destination directory, using the release name from GitHub.
+func (gd *GitHubDownloader) DownloadRelease(url, destinationDir, releaseName string) error {
+	// Ensure the destination directory is not empty
+	if destinationDir == "" {
+		return fmt.Errorf("destination directory cannot be empty")
+	}
+
+	// Create a temporary zip file for the download
+	tempZipFile, err := os.CreateTemp("", "github_release_*.zip")
+	if err != nil {
+		return fmt.Errorf("error creating temporary file: %w", err)
+	}
+	defer os.Remove(tempZipFile.Name()) // Ensure the temp file is removed afterwards
+	defer tempZipFile.Close()
+
+	// Create a new HTTP request
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("error creating request: %w", err)
+	}
+
+	// Use the GitHub client to execute the request
+	resp, err := gd.client.Client().Do(req)
+	if err != nil {
+		return fmt.Errorf("error making the request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check if the request was successful
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download file: %s", resp.Status)
+	}
+
+	// Write the response body (the zip file) to the temporary file
+	_, err = io.Copy(tempZipFile, resp.Body)
+	if err != nil {
+		return fmt.Errorf("error writing to temp file: %w", err)
+	}
+
+	// Rewind the temp file for reading
+	tempZipFile.Seek(0, 0)
+
+	// Unzip the contents to a temporary directory, stripping the outer folder
+	tempDir, err := os.MkdirTemp("", "github_release_unzip_*")
+	if err != nil {
+		return fmt.Errorf("error creating temp directory: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	err = unzipWithoutOuterFolder(tempZipFile.Name(), tempDir)
+	if err != nil {
+		return fmt.Errorf("error unzipping file: %w", err)
+	}
+
+	// Create the final zip file name from the release name
+	finalZipName := fmt.Sprintf("%s.zip", releaseName)
+	finalZipPath := filepath.Join(destinationDir, finalZipName)
+
+	// Rezip the contents directly to the destination
+	err = zipDirectory(tempDir, finalZipPath)
+	if err != nil {
+		return fmt.Errorf("error creating final zip file: %w", err)
+	}
+
+	fmt.Printf("Successfully downloaded and re-zipped the release to %s\n", finalZipPath)
+	return nil
+}
+
+// unzipWithoutOuterFolder extracts a zip file to the given destination directory,
+// stripping the first path component (the outer folder).
+func unzipWithoutOuterFolder(zipFile, dest string) error {
+	r, err := zip.OpenReader(zipFile)
 	if err != nil {
 		return err
 	}
+	defer r.Close()
 
-	// Get assets for the release.
-	opt := &github.ListOptions{PerPage: 100}
-	var allAssets []*github.ReleaseAsset
+	for _, f := range r.File {
+		// Skip any leading slashes
+		fpath := strings.TrimLeft(f.Name, "/")
 
-	for {
-		assets, resp, err := gd.client.Repositories.ListReleaseAssets(gd.ctx, owner, repo, release.GetID(), opt)
-		if err != nil {
-			return err
-		}
-		allAssets = append(allAssets, assets...)
-		if resp.NextPage == 0 {
-			break
-		}
-		opt.Page = resp.NextPage
-	}
-
-	// Find the asset matching the architecture.
-	var assetFound *github.ReleaseAsset
-	for _, asset := range allAssets {
-		if arch != "" && !strings.Contains(asset.GetName(), arch) {
+		// Split the path to remove the outer folder
+		parts := strings.SplitN(fpath, "/", 2)
+		if len(parts) == 2 {
+			fpath = parts[1]
+		} else {
+			// Skip entries that don't have an inner path
 			continue
 		}
-		assetFound = asset
-		break
-	}
 
-	if assetFound == nil {
-		return errors.New("asset not found")
-	}
+		fpath = filepath.Join(dest, fpath)
 
-	// Create the directory if it doesn't exist.
-	if _, err := os.Stat(gd.gitDownloadPath); os.IsNotExist(err) {
-		err = os.MkdirAll(gd.gitDownloadPath, os.ModePerm)
-		if err != nil {
-			return err
+		if f.FileInfo().IsDir() {
+			os.MkdirAll(fpath, os.ModePerm)
+		} else {
+			if err := os.MkdirAll(filepath.Dir(fpath), os.ModePerm); err != nil {
+				return err
+			}
+
+			outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+			if err != nil {
+				return err
+			}
+			defer outFile.Close()
+
+			rc, err := f.Open()
+			if err != nil {
+				return err
+			}
+			defer rc.Close()
+
+			_, err = io.Copy(outFile, rc)
+			if err != nil {
+				return err
+			}
 		}
-	}
-
-	// Download the asset.
-	rc, redirectURL, err := gd.client.Repositories.DownloadReleaseAsset(gd.ctx, owner, repo, assetFound.GetID(), http.DefaultClient)
-	if err != nil {
-		return err
-	}
-
-	var reader io.ReadCloser
-	if rc != nil {
-		reader = rc
-	} else if redirectURL != "" {
-		// Fallback for assets that require redirection.
-		resp, err := http.Get(redirectURL)
-		if err != nil {
-			return err
-		}
-		reader = resp.Body
-	} else {
-		return errors.New("failed to download asset")
-	}
-	defer reader.Close()
-
-	// Save the file.
-	outputPath := filepath.Join(gd.gitDownloadPath, assetFound.GetName())
-	outFile, err := os.Create(outputPath)
-	if err != nil {
-		return err
-	}
-	defer outFile.Close()
-
-	_, err = io.Copy(outFile, reader)
-	if err != nil {
-		return err
 	}
 
 	return nil
 }
 
-// ListAllAssets lists all assets across all releases.
-func (gd *GitHubDownloader) ListAllAssets(owner, repo string) ([]Asset, error) {
-	opt := &github.ListOptions{PerPage: 100}
-	var allReleases []*github.RepositoryRelease
+// zipDirectory compresses the contents of a directory into a zip file.
+func zipDirectory(srcDir, zipFile string) error {
+	zipOut, err := os.Create(zipFile)
+	if err != nil {
+		return fmt.Errorf("error creating zip file: %w", err)
+	}
+	defer zipOut.Close()
 
-	for {
-		releases, resp, err := gd.client.Repositories.ListReleases(gd.ctx, owner, repo, opt)
+	zipWriter := zip.NewWriter(zipOut)
+	defer zipWriter.Close()
+
+	// Walk through the directory and add files to the zip
+	err = filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil, err
+			return err
 		}
-		allReleases = append(allReleases, releases...)
-		if resp.NextPage == 0 {
-			break
+
+		// Create the zip header
+		relPath, err := filepath.Rel(srcDir, path)
+		if err != nil {
+			return err
 		}
-		opt.Page = resp.NextPage
+
+		if info.IsDir() {
+			// Skip adding directories to the zip
+			return nil
+		}
+
+		zipFileHeader, err := zip.FileInfoHeader(info)
+		if err != nil {
+			return err
+		}
+
+		zipFileHeader.Name = relPath
+		zipFileHeader.Method = zip.Deflate
+
+		// Write the file to the zip
+		writer, err := zipWriter.CreateHeader(zipFileHeader)
+		if err != nil {
+			return err
+		}
+
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+
+		_, err = io.Copy(writer, file)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("error while zipping directory: %w", err)
 	}
 
+	return nil
+}
+
+func (gd *GitHubDownloader) DownloadReleaseByArchVersion(owner, repo, version, arch, destinationDir string, opts *github.ListOptions) error {
+	assets, err := gd.ListAllAssets(owner, repo, opts)
+	if err != nil {
+		return err
+	}
+	var archMatch bool
+	var versionMatch bool
+	for _, asset := range assets {
+		if asset.Arch == arch {
+			archMatch = true
+			if asset.Version == version {
+				versionMatch = true
+				err := gd.DownloadRelease(asset.ZipDownloadURL, destinationDir, asset.Name)
+				if err != nil {
+					return err
+				}
+				return nil
+			}
+
+		}
+	}
+	if !archMatch {
+		return fmt.Errorf("%s is not a valid version", arch)
+	}
+	if !versionMatch {
+		return fmt.Errorf("%s is not a valid version", version)
+	}
+	return nil
+
+}
+
+// ListAllAssets lists all assets across all releases.
+func (gd *GitHubDownloader) ListAllAssets(owner, repo string, opts *github.ListOptions) ([]Asset, error) {
+	if opts == nil {
+		opts = &github.ListOptions{PerPage: 100}
+	}
+	releases, _, err := gd.client.Repositories.ListReleases(gd.ctx, owner, repo, opts)
+	if err != nil {
+		return nil, err
+	}
 	var allAssets []Asset
-	for _, release := range allReleases {
-		releaseAssets, err := gd.listAllAssetsForRelease(owner, repo, release.GetID())
-		if err != nil {
-			return nil, err
+	versionRegex := regexp.MustCompile(`-v(\d+\.\d+\.\d+)`)
+	for _, asset := range releases {
+		assetName := asset.GetName()
+		// Extract version and architecture from the asset name
+		version := ""
+		arch := ""
+		// Extract version
+		versionMatch := versionRegex.FindStringSubmatch(assetName)
+		if len(versionMatch) > 1 {
+			version = versionMatch[1] // Extract the version number
 		}
-		for _, asset := range releaseAssets {
-			allAssets = append(allAssets, Asset{
-				Name:               asset.GetName(),
-				BrowserDownloadURL: asset.GetBrowserDownloadURL(),
-				ReleaseTag:         release.GetTagName(),
-			})
+
+		// Extract architecture (only amd64 and armv7 for now)
+		if strings.Contains(assetName, "amd64") {
+			arch = "amd64"
+		} else if strings.Contains(assetName, "armv7") {
+			arch = "armv7"
 		}
+
+		allAssets = append(allAssets, Asset{
+			Name:               asset.GetName(),
+			BrowserDownloadURL: asset.GetAssetsURL(),
+			ZipDownloadURL:     asset.GetZipballURL(),
+			AssetID:            asset.GetID(),
+			ReleaseTag:         asset.GetTagName(),
+			Version:            fmt.Sprintf("v%s", version),
+			Arch:               arch,
+		})
 	}
 
 	return allAssets, nil
@@ -215,7 +364,7 @@ func (gd *GitHubDownloader) ListAssetsByVersion(owner, repo, tag string) ([]Asse
 
 // ListAssetsByArch lists all assets across all releases that match the given architecture.
 func (gd *GitHubDownloader) ListAssetsByArch(owner, repo, arch string) ([]Asset, error) {
-	allAssets, err := gd.ListAllAssets(owner, repo)
+	allAssets, err := gd.ListAllAssets(owner, repo, nil)
 	if err != nil {
 		return nil, err
 	}

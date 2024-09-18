@@ -108,25 +108,25 @@ func getAppsFromDir(dir string) ([]*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Regex to capture version strings with "v" prefix and additional qualifiers (e.g., rc, beta, etc.)
-	versionRegex := regexp.MustCompile(`v\d+(\.\d+)*`)
+
+	// Regex pattern to capture app name and version
+	versionedFilenameRegex := regexp.MustCompile(`^(.+?)[-_]?v(\d+(\.\d+)*)(.*)$`)
+
 	var apps []*App
 	for _, file := range files {
 		if filepath.Ext(file.Name()) == ".zip" {
 			fullPath := filepath.Join(dir, file.Name())
-			versionMatches := versionRegex.FindStringSubmatch(file.Name())
-			if len(versionMatches) > 0 {
-				verStr := versionMatches[0]
-				appName := strings.Replace(file.Name(), verStr, "", 1)
-				appName = strings.TrimSuffix(appName, filepath.Ext(appName)) // Remove the file extension
-				appName = strings.Trim(appName, "-_")                        // Clean up extra characters
-				verStr = strings.Trim(verStr, ".zip")                        // Clean up extra characters
-
+			filename := strings.TrimSuffix(file.Name(), filepath.Ext(file.Name()))
+			matches := versionedFilenameRegex.FindStringSubmatch(filename)
+			if matches != nil {
+				appName := matches[1] + matches[4]    // Combine name and any suffix
+				version := "v" + matches[2]           // Add back 'v' to version
+				appName = strings.Trim(appName, "-_") // Clean up any leading/trailing hyphens or underscores
 				// Add the app to the list
 				apps = append(apps, &App{
 					Path:    fullPath,
 					Name:    appName,
-					Version: verStr,
+					Version: version,
 				})
 			}
 		}
@@ -175,8 +175,20 @@ func (inst *AppManager) Install(app *App) error {
 	}
 	var appName = app.Name
 	var version = app.Version
+	apps, err := inst.ListLibraryApps()
+	if err != nil {
+		return err
+	}
+	for _, appList := range apps {
+		fmt.Println(appList.Name, appList.Version)
+		if appList.Name == appName {
+			if appList.Version == version {
+				app.Path = appList.Path
+			}
+		}
 
-	zipFilePath := filepath.Join(inst.LibraryPath, fmt.Sprintf("%s-%s.zip", appName, version))
+	}
+	zipFilePath := app.Path
 	installPath := filepath.Join(inst.InstallPath, appName, version)
 
 	// Step 1: Check if the app exists in the library
@@ -426,6 +438,7 @@ func (inst *AppManager) stopAndDisableService(appName string) error {
 }
 
 // unzipApp unzips the app from a zip file into the correct install directory structure
+// unzipApp unzips the app from a zip file into the correct install directory structure
 func (inst *AppManager) unzipApp(zipFilePath, destPath, appName string) error {
 	reader, err := zip.OpenReader(zipFilePath)
 	if err != nil {
@@ -438,33 +451,35 @@ func (inst *AppManager) unzipApp(zipFilePath, destPath, appName string) error {
 		return err
 	}
 
-	var binaryExtracted bool
-
-	// Extract the binary file
+	// Extract all files from the zip archive
 	for _, file := range reader.File {
+		filePath := filepath.Join(destPath, file.Name)
+
+		// Check if the current file is a directory
 		if file.FileInfo().IsDir() {
-			continue // Skip directories
+			// Create directory
+			if err := os.MkdirAll(filePath, os.ModePerm); err != nil {
+				return err
+			}
+			continue
 		}
 
+		// Ensure the directory for the file exists
+		if err := os.MkdirAll(filepath.Dir(filePath), os.ModePerm); err != nil {
+			return err
+		}
+
+		// Extract the file
+		if err := extractFile(file, filePath); err != nil {
+			return err
+		}
+
+		// If this is the app binary, set it as executable
 		if file.Name == appName || filepath.Ext(file.Name) == "" {
-			// Extract the file to destPath
-			fpath := filepath.Join(destPath, appName)
-			if err := extractFile(file, fpath); err != nil {
+			if err := inst.setExecutable(filePath); err != nil {
 				return err
 			}
-
-			// Set as executable
-			if err := inst.setExecutable(fpath); err != nil {
-				return err
-			}
-
-			binaryExtracted = true
-			break
 		}
-	}
-
-	if !binaryExtracted {
-		return fmt.Errorf("binary file not found in zip")
 	}
 
 	return nil

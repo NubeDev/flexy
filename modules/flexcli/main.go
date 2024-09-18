@@ -134,7 +134,7 @@ var modulesPing = &cobra.Command{
 }
 
 var appInstall = &cobra.Command{
-	Use:   "apps-install",
+	Use:   "app-install",
 	Short: "Install an app",
 	Run: func(cmd *cobra.Command, args []string) {
 		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
@@ -154,7 +154,7 @@ var appInstall = &cobra.Command{
 }
 
 var appUninstall = &cobra.Command{
-	Use:   "apps-uninstall",
+	Use:   "app-uninstall",
 	Short: "Uninstall an app",
 	Run: func(cmd *cobra.Command, args []string) {
 		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
@@ -218,45 +218,27 @@ var systemctlAction = &cobra.Command{
 			if len(args) > 2 {
 				property = args[2]
 			}
-
-			resp, err := client.BiosSystemdCommandPost(service, action, property, timeout)
-			if err != nil {
-				return err
-			}
-			pprint.PrintJSON(resp)
-			return nil
-		})
-	},
-}
-
-// go run main.go --url=nats://localhost:4222 --client-uuid=abc systemctl my-app start
-var systemctlStatus = &cobra.Command{
-	Use:   "systemctl",
-	Short: "Run systemd/systemctl commands eg; status, is-enabled",
-	Run: func(cmd *cobra.Command, args []string) {
-		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
-			if len(args) < 2 {
-				return fmt.Errorf("not enough arguments: service and action are required. eg my-service start")
-			}
-			service := args[0]
-			action := args[1]
-			var property string
-			if len(args) > 2 {
-				property = args[2]
+			if action == "status" || action == "is-enabled" {
+				resp, err := client.BiosSystemdCommandGet(service, action, property, timeout)
+				if err != nil {
+					return err
+				}
+				pprint.PrintJSON(resp)
+			} else {
+				resp, err := client.BiosSystemdCommandPost(service, action, property, timeout)
+				if err != nil {
+					return err
+				}
+				pprint.PrintJSON(resp)
 			}
 
-			resp, err := client.BiosSystemdCommandGet(service, action, property, timeout)
-			if err != nil {
-				return err
-			}
-			pprint.PrintJSON(resp)
 			return nil
 		})
 	},
 }
 
 var downloadReleaseCmd = &cobra.Command{
-	Use:   "download-release",
+	Use:   "github-download",
 	Short: "Download a GitHub release asset",
 	Long:  `Download a GitHub release asset by specifying owner, repo, tag, architecture, and other options.`,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -281,7 +263,7 @@ var downloadReleaseCmd = &cobra.Command{
 }
 
 var listGitReleaseCmd = &cobra.Command{
-	Use:   "list-release",
+	Use:   "github-releases",
 	Short: "Download a GitHub release asset",
 	Long:  `Download a GitHub release asset by specifying owner, repo, tag, architecture, and other options.`,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -333,7 +315,6 @@ func init() {
 	rootCmd.AddCommand(appList)
 	rootCmd.AddCommand(appInstalled)
 	rootCmd.AddCommand(systemctlAction)
-	rootCmd.AddCommand(systemctlStatus)
 
 }
 

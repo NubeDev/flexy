@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/NubeDev/flexy/utils/code"
 	githubdownloader "github.com/NubeDev/flexy/utils/gitdownloader"
-	"github.com/NubeDev/flexy/utils/helpers/pprint"
 	"github.com/nats-io/nats.go"
 )
 
@@ -59,7 +58,7 @@ func (s *Service) gitDownloadAsset(m *nats.Msg) {
 	if decoded.Token != "" {
 		s.githubDownloader.UpdateToken(decoded.Token)
 	}
-	err = s.githubDownloader.DownloadRelease(decoded.Owner, decoded.Repo, decoded.Tag, decoded.Arch)
+	err = s.githubDownloader.DownloadReleaseByArchVersion(decoded.Owner, decoded.Repo, decoded.Tag, decoded.Arch, s.gitDownloadPath, nil)
 	if err != nil {
 		s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error downloading: %s err: %v", decoded.Repo, err))
 	} else {
@@ -88,13 +87,11 @@ func (s *Service) gitListAllAssets(m *nats.Msg) {
 	if decoded.Token != "" {
 		s.githubDownloader.UpdateToken(decoded.Token)
 	}
-	pprint.PrintJSON(decoded)
-	resp, err := s.githubDownloader.ListAllAssets(decoded.Owner, decoded.Repo)
+
+	resp, err := s.githubDownloader.ListAllAssets(decoded.Owner, decoded.Repo, nil)
 	if err != nil {
 		s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error installing app: %v", err))
 	} else {
-		fmt.Println(1111)
-		pprint.PrintJSON(resp)
 		content, err := json.Marshal(resp)
 		if err != nil {
 			return

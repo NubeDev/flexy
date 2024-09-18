@@ -42,7 +42,6 @@ func (s *Service) handleSystemctlGet(m *nats.Msg) {
 
 	subjectParts := strings.Split(m.Subject, ".")
 	action := subjectParts[len(subjectParts)-1]
-
 	switch action {
 	case "status":
 		status, err := s.systemctlService.SystemdStatus(decoded.Name)
@@ -73,7 +72,7 @@ func (s *Service) handleSystemctlGet(m *nats.Msg) {
 			s.publish(m.Reply, fmt.Sprintf("Service %s property %s: %s", decoded.Name, decoded.Property, result), code.SUCCESS)
 		}
 	default:
-		message := fmt.Sprintf("Unknown POST action in systemctl manager: %s", action)
+		message := fmt.Sprintf("Unknown GET action in systemctl manager: %s", action)
 		log.Error().Msg(message)
 		s.handleError(m.Reply, code.UnknownCommand, message)
 	}
@@ -96,15 +95,10 @@ func (s *Service) handleSystemctlPost(m *nats.Msg) {
 		s.handleError(m.Reply, code.InvalidParams, "service name is required")
 		return
 	}
-	if decoded.Action == "" {
-		s.handleError(m.Reply, code.InvalidParams, "action is required, e.g., start, stop, restart, enable, disable, status, is-enabled, show")
-		return
-	}
-
 	// Switch based on the action provided
 	switch action {
 	case "start", "stop", "restart", "enable", "disable":
-		err := s.systemctlService.SystemdCommand(decoded.Name, decoded.Action)
+		err := s.systemctlService.SystemdCommand(decoded.Name, action)
 		if err != nil {
 			s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error performing %s on service %s: %v", decoded.Action, decoded.Name, err))
 		} else {

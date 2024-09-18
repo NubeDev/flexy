@@ -6,7 +6,7 @@ root_path: "/ros"
 apps_path: "apps"
 system_path: ""
 git_token: ""
-git_download_path: "/data/library"
+git_download_path: "/ros/apps/library"
 
 services:
   - ufw
