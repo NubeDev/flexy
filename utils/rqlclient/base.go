@@ -53,6 +53,24 @@ func (inst *Client) sendNATSRequest(clientUUID, script string, timeout time.Dura
 	return msg, nil
 }
 
+// RequestToApp allows sending a NATS request with a dynamic subject and JSON body
+func (inst *Client) RequestToApp(appID, subject string, body []byte, timeout time.Duration) (*nats.Msg, error) {
+	msg, err := inst.natsConn.Request(fmt.Sprintf("%s.%s", appID, subject), body, timeout)
+	if err != nil {
+		return nil, fmt.Errorf("NATS request to subject %s failed: %v", subject, err)
+	}
+	return msg, nil
+}
+
+// RequestWithSubject allows sending a NATS request with a dynamic subject and JSON body
+func (inst *Client) RequestWithSubject(subject string, body []byte, timeout time.Duration) (*nats.Msg, error) {
+	msg, err := inst.natsConn.Request(subject, body, timeout)
+	if err != nil {
+		return nil, fmt.Errorf("NATS request to subject %s failed: %v", subject, err)
+	}
+	return msg, nil
+}
+
 // Helper to build a request and handle the response
 func (inst *Client) biosCommandRequest(body map[string]string, action, entity, op string, timeout time.Duration) (interface{}, error) {
 	// Marshal the request body

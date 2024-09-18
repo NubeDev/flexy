@@ -78,6 +78,8 @@ func (s *Service) handleAppsGet(m *nats.Msg) {
 	action := subjectParts[len(subjectParts)-1]
 
 	switch action {
+	case "systemctl":
+		s.handleSystemctlGet(m)
 	case "installed":
 		s.handleListInstalledApps(m)
 	case "library":

@@ -11,6 +11,7 @@ import (
 
 type Systemd struct {
 	Name     string `json:"name"`
+	AppID    string `json:"appID"`
 	Action   string `json:"action"`
 	Property string `json:"property,omitempty"`
 }
@@ -23,25 +24,13 @@ func (s *Service) DecodeSystemd(m *nats.Msg) (*Systemd, error) {
 	return &cmd, nil
 }
 
-// Central handler for "POST" requests for systemctl
 func (s *Service) handleSystemctlGet(m *nats.Msg) {
-	decoded, err := s.DecodeSystemd(m)
-	if decoded == nil || err != nil {
-		if decoded == nil {
-			s.handleError(m.Reply, code.ERROR, "failed to parse JSON")
-			return
-		}
+	decoded, action, err := s.decodeAndSetAction(m)
+	if err != nil {
 		s.handleError(m.Reply, code.ERROR, err.Error())
 		return
 	}
 
-	if decoded.Name == "" {
-		s.handleError(m.Reply, code.InvalidParams, "service name is required")
-		return
-	}
-
-	subjectParts := strings.Split(m.Subject, ".")
-	action := subjectParts[len(subjectParts)-1]
 	switch action {
 	case "status":
 		status, err := s.systemctlService.SystemdStatus(decoded.Name)
@@ -79,23 +68,12 @@ func (s *Service) handleSystemctlGet(m *nats.Msg) {
 }
 
 func (s *Service) handleSystemctlPost(m *nats.Msg) {
-	// Decode the incoming message into the Systemd struct
-	decoded, err := s.DecodeSystemd(m)
-	if decoded == nil || err != nil {
-		if decoded == nil {
-			s.handleError(m.Reply, code.ERROR, "failed to parse JSON")
-			return
-		}
+	decoded, action, err := s.decodeAndSetAction(m)
+	if err != nil {
 		s.handleError(m.Reply, code.ERROR, err.Error())
 		return
 	}
-	subjectParts := strings.Split(m.Subject, ".")
-	action := subjectParts[len(subjectParts)-1]
-	if decoded.Name == "" {
-		s.handleError(m.Reply, code.InvalidParams, "service name is required")
-		return
-	}
-	// Switch based on the action provided
+
 	switch action {
 	case "start", "stop", "restart", "enable", "disable":
 		err := s.systemctlService.SystemdCommand(decoded.Name, action)
@@ -108,4 +86,52 @@ func (s *Service) handleSystemctlPost(m *nats.Msg) {
 	default:
 		s.handleError(m.Reply, code.InvalidParams, fmt.Sprintf("Unknown action: %s", decoded.Action))
 	}
+}
+
+// New method to handle setting the decoded.Name based on AppID
+func (s *Service) setAppName(decoded *Systemd) (*Systemd, error) {
+	if decoded.Name == "" {
+		if decoded.AppID != "" {
+			app, err := s.appManager.GetAppFirstByID(decoded.AppID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get app by id: %s", decoded.AppID)
+			}
+			if app == nil {
+				return nil, fmt.Errorf("failed to get app by id: %s", decoded.AppID)
+			}
+			decoded.Name = app.Name
+		} else {
+			return nil, fmt.Errorf("app name is required")
+		}
+	}
+	return decoded, nil
+}
+
+// Helper function to decode the message and determine the action
+func (s *Service) decodeAndSetAction(m *nats.Msg) (*Systemd, string, error) {
+	decoded, err := s.DecodeSystemd(m)
+	if decoded == nil || err != nil {
+		if decoded == nil {
+			return nil, "", fmt.Errorf("failed to parse JSON")
+		}
+		return nil, "", err
+	}
+
+	decoded, err = s.setAppName(decoded)
+	if err != nil {
+		s.handleError(m.Reply, code.ERROR, err.Error())
+		return nil, "", err
+	}
+
+	// Determine the action from the decoded message or the NATS subject
+	var action string
+	if decoded.Action != "" {
+		action = decoded.Action
+	} else {
+		subjectParts := strings.Split(m.Subject, ".")
+		action = subjectParts[len(subjectParts)-1]
+		decoded.Action = action
+	}
+
+	return decoded, action, nil
 }

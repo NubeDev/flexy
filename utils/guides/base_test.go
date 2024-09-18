@@ -1,42 +1,20 @@
 package guides
 
 import (
-	"fmt"
+	"github.com/NubeDev/flexy/utils/helpers/pprint"
 	"testing"
 )
 
 func TestHelpGuide_GetMethodArgs(t *testing.T) {
-	methods := []Method{
-		{
-			Name:        "createUser",
-			Description: "Create a new user in the system",
-			UseJSON:     true,
-			JSONBody: `{
-            "name": "string",
-            "email": "string",
-            "password": "string"
-        }`,
-		},
-		{
-			Name:        "getUser",
-			Description: "Retrieve user details by ID",
-			UseJSON:     false,
-			Args:        []string{"userID"},
-		},
-	}
-	module := Module{
-		Name:    "cli-tool",
-		Methods: methods,
-	}
-	h := HelpGuide{
-		Modules: []Module{module},
-	}
+	arg1 := NewArgFloat("num1")
+	arg2 := NewArgFloat("num2")
 
-	for i, s := range h.GetMethods() {
-		fmt.Println(i, s)
-	}
-	methodName := "createUser"
-	fmt.Println(h.GetMethodArgs("getUser"))
-	fmt.Println(h.GetMethodDetails(methodName))
+	method := NewMethod("mathAdd", "Adds two numbers", "<appID>.post.math.add.run", false, "", []Args{arg1, arg2})
+
+	module := NewModule("MathOperations", []Method{method})
+
+	guide := NewHelpGuide([]Module{module})
+
+	pprint.PrintJSON(guide)
 
 }

@@ -3,14 +3,14 @@ package rqlclient
 import "time"
 
 // BiosInstallApp installs an app with the given name and version on the specified client
-func (inst *Client) BiosInstallApp(appName, version string, timeout time.Duration) (interface{}, error) {
-	body := map[string]string{"name": appName, "version": version}
+func (inst *Client) BiosInstallApp(appName, version, appID string, timeout time.Duration) (interface{}, error) {
+	body := map[string]string{"name": appName, "version": version, "appID": appID}
 	return inst.biosCommandRequest(body, "post", "apps", "manager.install", timeout)
 }
 
 // BiosUninstallApp uninstalls an app with the given name and version on the specified client
-func (inst *Client) BiosUninstallApp(appName, version string, timeout time.Duration) (interface{}, error) {
-	body := map[string]string{"name": appName, "version": version}
+func (inst *Client) BiosUninstallApp(appName, version, appID string, timeout time.Duration) (interface{}, error) {
+	body := map[string]string{"name": appName, "version": version, "appID": appID}
 	return inst.biosCommandRequest(body, "post", "apps", "manager.uninstall", timeout)
 }
 

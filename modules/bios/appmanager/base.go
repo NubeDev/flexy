@@ -17,7 +17,11 @@ import (
 
 type ManagerInterface interface {
 	ListLibraryApps() ([]*App, error)
+	GetLibraryAppByID(appID, version string) (*App, error)
 	ListInstalledApps() ([]*App, error)
+	GetAppByName(name, version string) (*App, error)
+	GetAppByID(appID, version string) (*App, error)
+	GetAppFirstByID(appID string) (*App, error)
 	Install(app *App) error
 	Uninstall(app *App) error
 	DeleteSystemFile(appName string) error
@@ -39,13 +43,16 @@ type AppManager struct {
 
 // App struct to hold application details
 type App struct {
-	Path    string `json:"path,omitempty"`
-	Name    string `json:"name"`
-	Version string `json:"version"`
+	Path        string `json:"path,omitempty"`
+	Name        string `json:"name"`
+	AppID       string `json:"appID"`
+	Description string `json:"description"`
+	Version     string `json:"version"`
 }
 
 type Config struct {
 	ID          string          `yaml:"id"`
+	Description string          `yaml:"description"`
 	URL         string          `yaml:"url"`
 	ServiceFile ServiceFileYAML `yaml:"service_file"`
 }
@@ -102,6 +109,24 @@ func (inst *AppManager) ListLibraryApps() ([]*App, error) {
 	return getAppsFromDir(inst.LibraryPath)
 }
 
+func (inst *AppManager) GetLibraryAppByID(appID, version string) (*App, error) {
+	apps, err := inst.ListLibraryApps()
+	if err != nil {
+		return nil, err
+	}
+	var app *App
+	for _, libraryApp := range apps {
+		if libraryApp.AppID == appID && libraryApp.Version == version {
+			app = libraryApp
+			break
+		}
+	}
+	if app == nil {
+		return nil, fmt.Errorf("failed to get app by id: %s", appID)
+	}
+	return app, nil
+}
+
 func getAppsFromDir(dir string) ([]*App, error) {
 	// Read the directory contents
 	files, err := ioutil.ReadDir(dir)
@@ -122,17 +147,92 @@ func getAppsFromDir(dir string) ([]*App, error) {
 				appName := matches[1] + matches[4]    // Combine name and any suffix
 				version := "v" + matches[2]           // Add back 'v' to version
 				appName = strings.Trim(appName, "-_") // Clean up any leading/trailing hyphens or underscores
-				// Add the app to the list
-				apps = append(apps, &App{
+
+				// Default app details
+				app := &App{
 					Path:    fullPath,
 					Name:    appName,
 					Version: version,
-				})
+				}
+
+				// Try to extract and parse config.yaml from the zip file
+				configFilePath, err := extractConfigFromZip(fullPath)
+				if err == nil && configFilePath != "" {
+					// Parse the config.yaml file
+					config, err := parseConfigFile(configFilePath)
+					if err == nil {
+						// Update the app struct with config details
+						app.AppID = config.ID
+						app.Description = config.Description
+					}
+				}
+
+				// Add the app to the list
+				apps = append(apps, app)
 			}
 		}
 	}
 
 	return apps, nil
+}
+
+// extractConfigFromZip extracts the config.yaml from the zip file and returns its path
+func extractConfigFromZip(zipFilePath string) (string, error) {
+	// Open the zip file
+	reader, err := zip.OpenReader(zipFilePath)
+	if err != nil {
+		return "", err
+	}
+	defer reader.Close()
+
+	// Iterate through the files in the zip archive
+	for _, file := range reader.File {
+		// Check if it's the config.yaml file
+		if file.Name == "config.yaml" {
+			// Create a temporary file to extract the config.yaml
+			tempFile, err := ioutil.TempFile("", "config-*.yaml")
+			if err != nil {
+				return "", err
+			}
+			defer tempFile.Close()
+
+			// Extract the config.yaml to the temporary file
+			rc, err := file.Open()
+			if err != nil {
+				return "", err
+			}
+			defer rc.Close()
+
+			_, err = io.Copy(tempFile, rc)
+			if err != nil {
+				return "", err
+			}
+
+			// Return the path to the extracted config.yaml
+			return tempFile.Name(), nil
+		}
+	}
+
+	// If no config.yaml was found in the zip file
+	return "", nil
+}
+
+// parseConfigFile reads and parses a config.yaml file
+func parseConfigFile(configFilePath string) (*Config, error) {
+	var config *Config
+
+	// Read and parse config.yaml
+	configData, err := os.ReadFile(configFilePath)
+	if err != nil {
+		return config, err
+	}
+
+	err = yaml.Unmarshal(configData, &config)
+	if err != nil {
+		return config, err
+	}
+
+	return config, nil
 }
 
 func (inst *AppManager) ListInstalledApps() ([]*App, error) {
@@ -156,16 +256,86 @@ func (inst *AppManager) ListInstalledApps() ([]*App, error) {
 			// Loop through the versions
 			for _, versionDir := range versions {
 				if versionDir.IsDir() {
-					apps = append(apps, &App{
+					// Path to the config.yaml inside the appName/version folder
+					configFilePath := filepath.Join(inst.InstallPath, appName, versionDir.Name(), "config.yaml")
+					app := &App{
 						Name:    appName,
 						Version: versionDir.Name(),
-					})
+					}
+
+					// Check if config.yaml exists
+					if _, err := os.Stat(configFilePath); err == nil {
+						// Parse the config.yaml file
+						config, err := parseConfigFile(configFilePath)
+						if err == nil {
+							// Update the app struct with config details
+							app.AppID = config.ID
+							app.Description = config.Description
+						}
+					}
+
+					// Add the app to the list
+					apps = append(apps, app)
 				}
 			}
 		}
 	}
 
 	return apps, nil
+}
+
+func (inst *AppManager) GetAppByName(name, version string) (*App, error) {
+	apps, err := inst.ListInstalledApps()
+	if err != nil {
+		return nil, err
+	}
+	var app *App
+	for _, libraryApp := range apps {
+		if libraryApp.Name == name && libraryApp.Version == version {
+			app = libraryApp
+			break
+		}
+	}
+	if app == nil {
+		return nil, fmt.Errorf("failed to get app by name: %s", name)
+	}
+	return app, nil
+}
+
+func (inst *AppManager) GetAppFirstByID(appID string) (*App, error) {
+	apps, err := inst.ListInstalledApps()
+	if err != nil {
+		return nil, err
+	}
+	var app *App
+	for _, libraryApp := range apps {
+		if libraryApp.AppID == appID {
+			app = libraryApp
+			break
+		}
+	}
+	if app == nil {
+		return nil, fmt.Errorf("failed to get app by appID: %s", appID)
+	}
+	return app, nil
+}
+
+func (inst *AppManager) GetAppByID(appID, version string) (*App, error) {
+	apps, err := inst.ListInstalledApps()
+	if err != nil {
+		return nil, err
+	}
+	var app *App
+	for _, libraryApp := range apps {
+		if libraryApp.AppID == appID && libraryApp.Version == version {
+			app = libraryApp
+			break
+		}
+	}
+	if app == nil {
+		return nil, fmt.Errorf("failed to get app by appID: %s", appID)
+	}
+	return app, nil
 }
 
 // Install installs the specified app version
@@ -180,10 +350,10 @@ func (inst *AppManager) Install(app *App) error {
 		return err
 	}
 	for _, appList := range apps {
-		fmt.Println(appList.Name, appList.Version)
 		if appList.Name == appName {
 			if appList.Version == version {
 				app.Path = appList.Path
+				break
 			}
 		}
 

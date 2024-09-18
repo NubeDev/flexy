@@ -24,6 +24,7 @@ type Command struct {
 
 type App struct {
 	Name    string `json:"name"`
+	AppID   string `json:"appID"`
 	Version string `json:"version"`
 }
 

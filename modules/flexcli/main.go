@@ -119,7 +119,7 @@ var createHostCmd = &cobra.Command{
 }
 
 var modulesPing = &cobra.Command{
-	Use:   "global-apps-ping",
+	Use:   "global-system-ping",
 	Short: "Ping all the apps",
 	Run: func(cmd *cobra.Command, args []string) {
 		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
@@ -134,8 +134,8 @@ var modulesPing = &cobra.Command{
 }
 
 var appInstall = &cobra.Command{
-	Use:   "app-install",
-	Short: "Install an app",
+	Use:   "app-path-install",
+	Short: "Install an app by its zip folder name",
 	Run: func(cmd *cobra.Command, args []string) {
 		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
 			if len(args) < 2 {
@@ -143,7 +143,27 @@ var appInstall = &cobra.Command{
 			}
 			appName := args[0]
 			appVersion := args[1]
-			resp, err := client.BiosInstallApp(appName, appVersion, timeout)
+			resp, err := client.BiosInstallApp(appName, appVersion, "", timeout)
+			if err != nil {
+				return err
+			}
+			pprint.PrintJSON(resp)
+			return nil
+		})
+	},
+}
+
+var appInstallByID = &cobra.Command{
+	Use:   "app-install",
+	Short: "Install an app by its appID",
+	Run: func(cmd *cobra.Command, args []string) {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
+			if len(args) < 2 {
+				return fmt.Errorf("not enough arguments: appName and appVersion are required")
+			}
+			appID := args[0]
+			appVersion := args[1]
+			resp, err := client.BiosInstallApp("", appVersion, appID, timeout)
 			if err != nil {
 				return err
 			}
@@ -154,8 +174,8 @@ var appInstall = &cobra.Command{
 }
 
 var appUninstall = &cobra.Command{
-	Use:   "app-uninstall",
-	Short: "Uninstall an app",
+	Use:   "app-path-uninstall",
+	Short: "Uninstall an app by its zip folder name",
 	Run: func(cmd *cobra.Command, args []string) {
 		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
 			if len(args) < 2 {
@@ -163,7 +183,27 @@ var appUninstall = &cobra.Command{
 			}
 			appName := args[0]
 			appVersion := args[1]
-			resp, err := client.BiosUninstallApp(appName, appVersion, timeout)
+			resp, err := client.BiosUninstallApp(appName, appVersion, "", timeout)
+			if err != nil {
+				return err
+			}
+			pprint.PrintJSON(resp)
+			return nil
+		})
+	},
+}
+
+var appUninstallByID = &cobra.Command{
+	Use:   "app-uninstall",
+	Short: "Uninstall an app by its appID",
+	Run: func(cmd *cobra.Command, args []string) {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
+			if len(args) < 2 {
+				return fmt.Errorf("not enough arguments: appName and appVersion are required")
+			}
+			appID := args[0]
+			appVersion := args[1]
+			resp, err := client.BiosUninstallApp("", appVersion, appID, timeout)
 			if err != nil {
 				return err
 			}
@@ -203,6 +243,39 @@ var appList = &cobra.Command{
 	},
 }
 
+var appSystemctl = &cobra.Command{
+	Use:   "app-systemctl",
+	Short: "Run systemd/systemctl commands eg; start, stop, restart, enable, disable",
+	Run: func(cmd *cobra.Command, args []string) {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
+			if len(args) < 2 {
+				return fmt.Errorf("not enough arguments: service and action are required. eg my-service start")
+			}
+			service := args[0]
+			action := args[1]
+			var property string
+			if len(args) > 2 {
+				property = args[2]
+			}
+			if action == "status" || action == "is-enabled" {
+				resp, err := client.BiosSystemdCommandGet("", action, property, service, timeout)
+				if err != nil {
+					return err
+				}
+				pprint.PrintJSON(resp)
+			} else {
+				resp, err := client.BiosSystemdCommandPost("", action, property, service, timeout)
+				if err != nil {
+					return err
+				}
+				pprint.PrintJSON(resp)
+			}
+
+			return nil
+		})
+	},
+}
+
 // go run main.go --url=nats://localhost:4222 --client-uuid=abc systemctl my-app start
 var systemctlAction = &cobra.Command{
 	Use:   "systemctl",
@@ -219,13 +292,13 @@ var systemctlAction = &cobra.Command{
 				property = args[2]
 			}
 			if action == "status" || action == "is-enabled" {
-				resp, err := client.BiosSystemdCommandGet(service, action, property, timeout)
+				resp, err := client.BiosSystemdCommandGet(service, action, property, "", timeout)
 				if err != nil {
 					return err
 				}
 				pprint.PrintJSON(resp)
 			} else {
-				resp, err := client.BiosSystemdCommandPost(service, action, property, timeout)
+				resp, err := client.BiosSystemdCommandPost(service, action, property, "", timeout)
 				if err != nil {
 					return err
 				}
@@ -287,6 +360,37 @@ var listGitReleaseCmd = &cobra.Command{
 	},
 }
 
+var natsRequestCmd = &cobra.Command{
+	Use:   "nats-request",
+	Short: "Send a request to a NATS subject with a provided body",
+	Run: func(cmd *cobra.Command, args []string) {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
+			if len(args) < 2 {
+				return fmt.Errorf("not enough arguments, required: appID, subject, body. try; app-abc post.math.add.run 100")
+			}
+			appID := args[0]
+			subject := args[1]
+			var body string
+			if len(args) > 2 {
+				body = args[2]
+			}
+
+			// Create the request payload (convert the string body to JSON)
+			payload := []byte(body)
+
+			// Send the request to the NATS subject
+			msg, err := client.RequestToApp(appID, subject, payload, timeout)
+			if err != nil {
+				return fmt.Errorf("NATS request failed: %v", err)
+			}
+
+			// Print the response from the NATS request
+			pprint.PrintJSON(string(msg.Data))
+			return nil
+		})
+	},
+}
+
 func init() {
 	// Define persistent flags common to all commands
 	rootCmd.PersistentFlags().StringVarP(&natsURL, "url", "u", "nats://localhost:4222", "NATS server URL")
@@ -310,11 +414,15 @@ func init() {
 	rootCmd.AddCommand(deleteHostCmd)
 	rootCmd.AddCommand(modulesPing)
 
+	rootCmd.AddCommand(appInstallByID)
 	rootCmd.AddCommand(appInstall)
 	rootCmd.AddCommand(appUninstall)
+	rootCmd.AddCommand(appUninstallByID)
 	rootCmd.AddCommand(appList)
 	rootCmd.AddCommand(appInstalled)
+	rootCmd.AddCommand(appSystemctl)
 	rootCmd.AddCommand(systemctlAction)
+	rootCmd.AddCommand(natsRequestCmd)
 
 }
 

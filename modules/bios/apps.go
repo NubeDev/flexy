@@ -38,6 +38,11 @@ func (s *Service) handleInstallApp(m *nats.Msg) {
 		s.handleError(m.Reply, code.ERROR, err.Error())
 		return
 	}
+	decoded, err = s.getAppName(decoded)
+	if err != nil {
+		s.handleError(m.Reply, code.ERROR, err.Error())
+		return
+	}
 	if decoded.Name == "" {
 		s.handleError(m.Reply, code.InvalidParams, "app name is required")
 		return
@@ -55,6 +60,26 @@ func (s *Service) handleInstallApp(m *nats.Msg) {
 	}
 }
 
+// New method to handle setting the decoded.Name based on AppID
+func (s *Service) getAppName(decoded *App) (*App, error) {
+	if decoded.Name == "" {
+		if decoded.AppID != "" {
+			app, err := s.appManager.GetAppByID(decoded.AppID, decoded.Version)
+			if err != nil {
+				return nil, err
+			}
+			if app == nil {
+				return nil, fmt.Errorf("%s not found", decoded.AppID)
+			}
+			decoded.Name = app.Name
+
+		} else {
+			return nil, fmt.Errorf("app name is required")
+		}
+	}
+	return decoded, nil
+}
+
 func (s *Service) handleUninstallApp(m *nats.Msg) {
 	decoded, err := s.DecodeApps(m)
 	if decoded == nil || err != nil {
@@ -62,6 +87,11 @@ func (s *Service) handleUninstallApp(m *nats.Msg) {
 			s.handleError(m.Reply, code.ERROR, "failed to parse json")
 			return
 		}
+		s.handleError(m.Reply, code.ERROR, err.Error())
+		return
+	}
+	decoded, err = s.getAppName(decoded)
+	if err != nil {
 		s.handleError(m.Reply, code.ERROR, err.Error())
 		return
 	}
