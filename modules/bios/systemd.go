@@ -12,6 +12,7 @@ import (
 type Systemd struct {
 	Name     string `json:"name"`
 	AppID    string `json:"appID"`
+	Version  string `json:"version"`
 	Action   string `json:"action"`
 	Property string `json:"property,omitempty"`
 }
@@ -92,9 +93,12 @@ func (s *Service) handleSystemctlPost(m *nats.Msg) {
 func (s *Service) setAppName(decoded *Systemd) (*Systemd, error) {
 	if decoded.Name == "" {
 		if decoded.AppID != "" {
-			app, err := s.appManager.GetAppFirstByID(decoded.AppID)
+			if decoded.Version == "" {
+				return nil, fmt.Errorf("app version is required")
+			}
+			app, err := s.appManager.GetAppByID(decoded.AppID, decoded.Version)
 			if err != nil {
-				return nil, fmt.Errorf("failed to get app by id: %s", decoded.AppID)
+				return nil, err
 			}
 			if app == nil {
 				return nil, fmt.Errorf("failed to get app by id: %s", decoded.AppID)

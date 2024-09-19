@@ -64,7 +64,7 @@ func (s *Service) handleInstallApp(m *nats.Msg) {
 func (s *Service) getAppName(decoded *App) (*App, error) {
 	if decoded.Name == "" {
 		if decoded.AppID != "" {
-			app, err := s.appManager.GetAppByID(decoded.AppID, decoded.Version)
+			app, err := s.appManager.GetLibraryAppByID(decoded.AppID, decoded.Version)
 			if err != nil {
 				return nil, err
 			}

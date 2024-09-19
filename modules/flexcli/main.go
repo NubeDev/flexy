@@ -248,23 +248,24 @@ var appSystemctl = &cobra.Command{
 	Short: "Run systemd/systemctl commands eg; start, stop, restart, enable, disable",
 	Run: func(cmd *cobra.Command, args []string) {
 		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
-			if len(args) < 2 {
+			if len(args) < 3 {
 				return fmt.Errorf("not enough arguments: service and action are required. eg my-service start")
 			}
 			service := args[0]
-			action := args[1]
+			version := args[1]
+			action := args[2]
 			var property string
 			if len(args) > 2 {
 				property = args[2]
 			}
 			if action == "status" || action == "is-enabled" {
-				resp, err := client.BiosSystemdCommandGet("", action, property, service, timeout)
+				resp, err := client.BiosSystemdCommandGet("", action, property, service, version, timeout)
 				if err != nil {
 					return err
 				}
 				pprint.PrintJSON(resp)
 			} else {
-				resp, err := client.BiosSystemdCommandPost("", action, property, service, timeout)
+				resp, err := client.BiosSystemdCommandPost("", action, property, service, version, timeout)
 				if err != nil {
 					return err
 				}
@@ -292,13 +293,13 @@ var systemctlAction = &cobra.Command{
 				property = args[2]
 			}
 			if action == "status" || action == "is-enabled" {
-				resp, err := client.BiosSystemdCommandGet(service, action, property, "", timeout)
+				resp, err := client.BiosSystemdCommandGet(service, action, property, "", "", timeout)
 				if err != nil {
 					return err
 				}
 				pprint.PrintJSON(resp)
 			} else {
-				resp, err := client.BiosSystemdCommandPost(service, action, property, "", timeout)
+				resp, err := client.BiosSystemdCommandPost(service, action, property, "", "", timeout)
 				if err != nil {
 					return err
 				}
@@ -391,12 +392,111 @@ var natsRequestCmd = &cobra.Command{
 	},
 }
 
+var getStoresCmd = &cobra.Command{
+	Use:   "store-get-stores",
+	Short: "Retrieve all object stores",
+	Run: func(cmd *cobra.Command, args []string) {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
+			resp, err := client.GetStores(timeout)
+			if err != nil {
+				return err
+			}
+			pprint.PrintJSON(resp)
+			return nil
+		})
+	},
+}
+
+var getObjectsCmd = &cobra.Command{
+	Use:   "store-get-objects",
+	Short: "Retrieve all objects in a store  [storeName]",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
+			storeName := args[0]
+			resp, err := client.GetStoreObjects(storeName, timeout)
+			if err != nil {
+				return err
+			}
+			pprint.PrintJSON(resp)
+			return nil
+		})
+	},
+}
+
+var addObjectCmd = &cobra.Command{
+	Use:   "store-add-object",
+	Short: "Add an object to the store from where the cli is being excepted (eg; not on the bios) [storeName] [objectName] [filePath]",
+	Args:  cobra.ExactArgs(4),
+	Run: func(cmd *cobra.Command, args []string) {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
+			if len(args) < 3 {
+				return fmt.Errorf("not enough arguments")
+			}
+			storeName := args[0]
+			objectName := args[1]
+			filePath := args[2]
+			overwriteIfExisting := args[3]
+			var overwrite bool
+			if overwriteIfExisting == "true" {
+				overwrite = true
+			}
+			_, err := client.AddObject(storeName, objectName, filePath, overwrite)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Object %s added successfully to store %s\n", objectName, storeName)
+			return nil
+		})
+	},
+}
+
+var downloadObjectCmd = &cobra.Command{
+	Use:   "store-download-object",
+	Short: "Download an object from the store and save it locally  [storeName] [objectName] [destinationPath]",
+	Args:  cobra.ExactArgs(3),
+	Run: func(cmd *cobra.Command, args []string) {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
+			storeName := args[0]
+			objectName := args[1]
+			destinationPath := args[2]
+
+			resp, err := client.DownloadObject(storeName, objectName, destinationPath, timeout)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("downloaded successfully to %s \n", resp)
+			return nil
+		})
+	},
+}
+
+var deleteObjectCmd = &cobra.Command{
+	Use:   "store-delete-object",
+	Short: "Delete an object from the store  [storeName] [objectName]",
+	Args:  cobra.ExactArgs(2),
+	Run: func(cmd *cobra.Command, args []string) {
+		runCommand(cmd, args, func(client *rqlclient.Client, args []string) error {
+			storeName := args[0]
+			objectName := args[1]
+			resp, err := client.DeleteObject(storeName, objectName, timeout)
+			if err != nil {
+				fmt.Println(err)
+				pprint.PrintJSON(resp)
+				return err
+			}
+			pprint.PrintJSON(resp)
+			return nil
+		})
+	},
+}
+
 func init() {
 	// Define persistent flags common to all commands
 	rootCmd.PersistentFlags().StringVarP(&natsURL, "url", "u", "nats://localhost:4222", "NATS server URL")
 	rootCmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", 5*time.Second, "Request timeout")
-	rootCmd.PersistentFlags().StringVarP(&globalUUID, "client-uuid", "c", "", "Client UUID")
-	createHostCmd.MarkFlagRequired("client-uuid")
+	rootCmd.PersistentFlags().StringVarP(&globalUUID, "global-uuid", "c", "", "global UUID")
+	createHostCmd.MarkFlagRequired("global-uuid")
 	createHostCmd.Flags().StringVarP(&jsonInput, "json", "j", "", "JSON input")
 	createHostCmd.MarkFlagRequired("json")
 
@@ -423,6 +523,11 @@ func init() {
 	rootCmd.AddCommand(appSystemctl)
 	rootCmd.AddCommand(systemctlAction)
 	rootCmd.AddCommand(natsRequestCmd)
+	rootCmd.AddCommand(getStoresCmd)
+	rootCmd.AddCommand(getObjectsCmd)
+	rootCmd.AddCommand(addObjectCmd)
+	rootCmd.AddCommand(downloadObjectCmd)
+	rootCmd.AddCommand(deleteObjectCmd)
 
 }
 

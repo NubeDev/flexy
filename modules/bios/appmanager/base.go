@@ -115,13 +115,23 @@ func (inst *AppManager) GetLibraryAppByID(appID, version string) (*App, error) {
 		return nil, err
 	}
 	var app *App
+	var appExists bool
+	var appVersion string
 	for _, libraryApp := range apps {
-		if libraryApp.AppID == appID && libraryApp.Version == version {
-			app = libraryApp
-			break
+		if libraryApp.AppID == appID {
+			appExists = true
+			appVersion = libraryApp.Version
+			if libraryApp.Version == version {
+				app = libraryApp
+				break
+			}
+
 		}
 	}
 	if app == nil {
+		if appExists {
+			return nil, fmt.Errorf("app: %s exists! but failed to find by version %s, try version: %s", appID, version, appVersion)
+		}
 		return nil, fmt.Errorf("failed to get app by id: %s", appID)
 	}
 	return app, nil
@@ -290,13 +300,23 @@ func (inst *AppManager) GetAppByName(name, version string) (*App, error) {
 		return nil, err
 	}
 	var app *App
+	var appExists bool
+	var appVersion string
 	for _, libraryApp := range apps {
-		if libraryApp.Name == name && libraryApp.Version == version {
-			app = libraryApp
-			break
+		if libraryApp.Name == name {
+			appExists = true
+			appVersion = libraryApp.Version
+			if libraryApp.Version == version {
+				app = libraryApp
+				break
+			}
+
 		}
 	}
 	if app == nil {
+		if appExists {
+			return nil, fmt.Errorf("app: %s exists! but failed to find by version %s, try version: %s", name, version, appVersion)
+		}
 		return nil, fmt.Errorf("failed to get app by name: %s", name)
 	}
 	return app, nil
@@ -326,14 +346,24 @@ func (inst *AppManager) GetAppByID(appID, version string) (*App, error) {
 		return nil, err
 	}
 	var app *App
+	var appExists bool
+	var appVersion string
 	for _, libraryApp := range apps {
-		if libraryApp.AppID == appID && libraryApp.Version == version {
-			app = libraryApp
-			break
+		if libraryApp.AppID == appID {
+			appExists = true
+			appVersion = libraryApp.Version
+			if libraryApp.Version == version {
+				app = libraryApp
+				break
+			}
+
 		}
 	}
 	if app == nil {
-		return nil, fmt.Errorf("failed to get app by appID: %s", appID)
+		if appExists {
+			return nil, fmt.Errorf("app: %s exists! but failed to find by version %s, try version: %s", appID, version, appVersion)
+		}
+		return nil, fmt.Errorf("failed to get app by id: %s", appID)
 	}
 	return app, nil
 }

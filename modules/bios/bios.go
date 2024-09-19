@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/NubeDev/flexy/app/services/natsrouter"
 	"github.com/NubeDev/flexy/modules/bios/appmanager"
 	"github.com/NubeDev/flexy/utils/code"
 	githubdownloader "github.com/NubeDev/flexy/utils/gitdownloader"
@@ -18,6 +17,7 @@ import (
 
 // Command structure to decode the incoming JSON
 type Command struct {
+	Action  string                 `json:"action"`
 	Command string                 `json:"command"`
 	Body    map[string]interface{} `json:"body"`
 }
@@ -30,12 +30,12 @@ type App struct {
 
 // Service struct to handle NATS and file operations
 type Service struct {
-	globalUUID         string
-	description        string
-	gitDownloadPath    string
-	natsClient         natlib.NatLib
-	natsConn           *nats.Conn
-	natsStore          *natsrouter.NatsRouter
+	globalUUID      string
+	description     string
+	gitDownloadPath string
+	natsClient      natlib.NatLib
+	natsConn        *nats.Conn
+	//natsStore          *natsrouter.NatsRouter
 	systemctlService   systemctl.Commands
 	appManager         appmanager.ManagerInterface
 	biosSubjectBuilder *subjects.SubjectBuilder
@@ -44,6 +44,7 @@ type Service struct {
 	Config             *viper.Viper
 	RootCmd            *cobra.Command
 	natsSubjects       []string
+	natsStore          *natsStore
 }
 
 type Opts struct {
@@ -55,9 +56,18 @@ type Opts struct {
 	GitToken        string
 	GitDownloadPath string
 	ProxyNatsPort   int
+	EnableNatsStore bool
+}
+
+type natsStore struct {
+	name            string
+	enableNatsStore bool
 }
 
 func (s *Service) NewService(opts *Opts) error {
+	if opts == nil {
+		return fmt.Errorf("no options provided")
+	}
 	var globalUUID string
 	var natsURL string
 	var dataPath string
@@ -65,14 +75,12 @@ func (s *Service) NewService(opts *Opts) error {
 	var gitToken string
 	var gitDownloadPath string
 
-	if opts != nil {
-		globalUUID = opts.GlobalUUID
-		natsURL = opts.NatsURL
-		dataPath = opts.AppsPath
-		systemPath = opts.SystemPath
-		gitToken = opts.GitToken
-		gitDownloadPath = opts.GitDownloadPath
-	}
+	globalUUID = opts.GlobalUUID
+	natsURL = opts.NatsURL
+	dataPath = opts.AppsPath
+	systemPath = opts.SystemPath
+	gitToken = opts.GitToken
+	gitDownloadPath = opts.GitDownloadPath
 
 	nc, err := nats.Connect(natsURL)
 	if err != nil {
@@ -92,8 +100,9 @@ func (s *Service) NewService(opts *Opts) error {
 	s.appManager = appManager
 	s.biosSubjectBuilder = subjects.NewSubjectBuilder(globalUUID, "bios", subjects.IsBios)
 	s.githubDownloader = githubdownloader.New(gitToken, gitDownloadPath)
-	s.natsClient = natlib.New(natlib.NewOpts{})
-
+	s.natsClient = natlib.New(natlib.NewOpts{
+		EnableJetStream: opts.EnableNatsStore,
+	})
 	return nil
 }
 

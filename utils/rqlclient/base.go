@@ -15,6 +15,7 @@ import (
 
 // Client struct to hold the NATS connection
 type Client struct {
+	globalUUID         string
 	natsConn           *nats.Conn
 	biosSubjectBuilder *subjects.SubjectBuilder
 	gitDownloader      *githubdownloader.GitHubDownloader
@@ -28,9 +29,12 @@ func New(natsURL, globalUUID string) (*Client, error) {
 		return nil, fmt.Errorf("failed to connect to NATS: %v", err)
 	}
 	return &Client{
+		globalUUID:         globalUUID,
 		natsConn:           nc,
 		biosSubjectBuilder: subjects.NewSubjectBuilder(globalUUID, "bios", subjects.IsBios),
-		natsClient:         natlib.New(natlib.NewOpts{}),
+		natsClient: natlib.New(natlib.NewOpts{
+			EnableJetStream: true,
+		}),
 	}, nil
 }
 

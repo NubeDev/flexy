@@ -38,6 +38,7 @@ func (s *Service) SetupCLI() {
 		if natsURL == "" {
 			natsURL = nats.DefaultURL
 		}
+		enableNatsStore := s.Config.GetBool("jet_stream.store_enable")
 
 		// Initialize options from the configuration
 		opts := &Opts{
@@ -49,17 +50,34 @@ func (s *Service) SetupCLI() {
 			GitToken:        s.Config.GetString("git_token"),
 			GitDownloadPath: s.Config.GetString("git_download_path"),
 			ProxyNatsPort:   s.Config.GetInt("proxy_port"),
+			EnableNatsStore: enableNatsStore,
 		}
 
 		// Initialize services using NewService
 		if err := s.NewService(opts); err != nil {
-			return fmt.Errorf("failed to initialize services: %v", err)
+			return fmt.Errorf("failed to initialise services: %v", err)
 		}
 
 		// Retrieve services from the configuration
 		s.services = s.Config.GetStringSlice("services")
 		s.description = s.Config.GetString("description")
 
+		if enableNatsStore {
+			name := s.Config.GetString("jet_stream.store_name")
+			if name == "" {
+				name = "bios"
+			}
+
+			s.natsStore = &natsStore{
+				name:            name,
+				enableNatsStore: true,
+			}
+
+			err := s.natsStoreInit(name)
+			if err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 

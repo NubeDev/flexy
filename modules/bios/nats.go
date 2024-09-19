@@ -16,12 +16,6 @@ func (s *Service) StartService() error {
 
 	go s.natsForwarder(s.natsConn, fmt.Sprintf("nats://127.0.0.1:%d", s.Config.GetInt("proxy_port")))
 
-	// Initialize NATS store
-	err = s.natsStoreInit(s.natsConn)
-	if err != nil {
-		return fmt.Errorf("failed to init nats-store: %v", err)
-	}
-
 	err = s.natsClient.SubscribeWithRespond(s.biosSubjectBuilder.GlobalSubject("get", "system", "ping"), s.handlePing, &natlib.Opts{})
 	if err != nil {
 		return err
@@ -63,7 +57,7 @@ func (s *Service) StartService() error {
 	}
 
 	// Store handler
-	err = s.addNatsSubscribe(s.biosSubjectBuilder.AddGlobalUUID("bios.%s.store"), s.HandleStore)
+	err = s.addNatsSubscribe(s.biosSubjectBuilder.BuildSubject("post", "system", "store.>"), s.handleStore)
 	if err != nil {
 		return err
 	}
