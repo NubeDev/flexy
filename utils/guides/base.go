@@ -10,7 +10,7 @@ type Args struct {
 type Method struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	Topic       string `json:"string"`
+	Topic       string `json:"subject"`
 	Args        []Args `json:"args,omitempty"`      // Arguments with type information
 	JSONBody    string `json:"json_body,omitempty"` // JSON body schema/example
 	UseJSON     bool   `json:"use_json,omitempty"`  // Indicates if this method uses JSON body
