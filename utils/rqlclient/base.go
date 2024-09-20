@@ -85,6 +85,7 @@ func (inst *Client) biosCommandRequest(body map[string]string, action, entity, o
 
 	// Build the subject
 	subject := inst.biosSubjectBuilder.BuildSubject(action, entity, op)
+
 	log.Info().Msgf("bios-command nats subject: %s", subject)
 	// Send the request
 	request, err := inst.natsConn.Request(subject, requestData, timeout)

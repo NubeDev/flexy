@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"github.com/NubeDev/flexy/utils/code"
-	"github.com/NubeDev/flexy/utils/natlib"
 	"github.com/nats-io/nats.go"
 	"github.com/rs/zerolog/log"
 	"strings"
@@ -16,15 +15,15 @@ func (s *Service) StartService() error {
 
 	go s.natsForwarder(s.natsConn, fmt.Sprintf("nats://127.0.0.1:%d", s.Config.GetInt("proxy_port")))
 
-	err = s.natsClient.SubscribeWithRespond(s.biosSubjectBuilder.GlobalSubject("get", "system", "ping"), s.handlePing, &natlib.Opts{})
-	if err != nil {
-		return err
-	}
-
-	err = s.natsClient.SubscribeWithRespond(s.biosSubjectBuilder.BuildSubject("get", "system", "ping"), s.handlePing, &natlib.Opts{})
-	if err != nil {
-		return err
-	}
+	//err = s.natsClient.SubscribeWithRespond(s.biosSubjectBuilder.GlobalSubject("get", "system", "ping"), s.handlePing, &natlib.Opts{})
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//err = s.natsClient.SubscribeWithRespond(s.biosSubjectBuilder.BuildSubject("get", "system", "ping"), s.handlePing, &natlib.Opts{})
+	//if err != nil {
+	//	return err
+	//}
 
 	err = s.addNatsSubscribe(s.biosSubjectBuilder.BuildSubject("get", "system", "systemctl.*"), s.handleSystemctlGet)
 	if err != nil {
@@ -35,7 +34,6 @@ func (s *Service) StartService() error {
 	if err != nil {
 		return err
 	}
-
 	// Apps-related subscriptions (centralized handlers)
 	err = s.addNatsSubscribe(s.biosSubjectBuilder.BuildSubject("get", "apps", "manager.*"), s.handleAppsGet)
 	if err != nil {

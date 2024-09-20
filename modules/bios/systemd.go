@@ -38,8 +38,7 @@ func (s *Service) handleSystemctlGet(m *nats.Msg) {
 		if err != nil {
 			s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error getting status of service %s: %v", decoded.Name, err))
 		} else {
-			respJSON, _ := json.Marshal(status)
-			s.publish(m.Reply, string(respJSON), code.SUCCESS)
+			s.publishResponse(m, status, code.SUCCESS)
 		}
 
 	case "is-enabled":
@@ -47,7 +46,10 @@ func (s *Service) handleSystemctlGet(m *nats.Msg) {
 		if err != nil {
 			s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error checking if service %s is enabled: %v", decoded.Name, err))
 		} else {
-			s.publish(m.Reply, fmt.Sprintf("Service %s is-enabled: %v", decoded.Name, enabled), code.SUCCESS)
+			out := Message{
+				fmt.Sprintf("Service %s is-enabled: %v", decoded.Name, enabled),
+			}
+			s.publishResponse(m, out, code.SUCCESS)
 		}
 
 	case "show":
@@ -59,7 +61,10 @@ func (s *Service) handleSystemctlGet(m *nats.Msg) {
 		if err != nil {
 			s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error showing property %s of service %s: %v", decoded.Property, decoded.Name, err))
 		} else {
-			s.publish(m.Reply, fmt.Sprintf("Service %s property %s: %s", decoded.Name, decoded.Property, result), code.SUCCESS)
+			out := Message{
+				fmt.Sprintf("Service %s property %s: %s", decoded.Name, decoded.Property, result),
+			}
+			s.publishResponse(m, out, code.SUCCESS)
 		}
 	default:
 		message := fmt.Sprintf("Unknown GET action in systemctl manager: %s", action)
@@ -81,7 +86,10 @@ func (s *Service) handleSystemctlPost(m *nats.Msg) {
 		if err != nil {
 			s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error performing %s on service %s: %v", decoded.Action, decoded.Name, err))
 		} else {
-			s.publish(m.Reply, fmt.Sprintf("Service %s %sed successfully", decoded.Name, decoded.Action), code.SUCCESS)
+			out := Message{
+				fmt.Sprintf("Service %s %sed successfully", decoded.Name, decoded.Action),
+			}
+			s.publishResponse(m, out, code.SUCCESS)
 		}
 
 	default:

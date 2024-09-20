@@ -8,6 +8,7 @@ require (
 	github.com/andanhm/go-prettytime v1.1.0
 	github.com/casbin/casbin/v2 v2.99.0
 	github.com/casbin/gorm-adapter/v3 v3.28.0
+	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
 	github.com/dop251/goja v0.0.0-20240828124009-016eb7256539
 	github.com/gin-gonic/gin v1.10.0
 	github.com/glebarez/sqlite v1.11.0

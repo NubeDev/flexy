@@ -114,7 +114,7 @@ func (inst *Client) DeleteObject(storeName, objectName string, timeout time.Dura
 	return response, nil
 }
 
-func (inst *Client) DownloadObject(storeName, objectName, destinationPath string, timeout time.Duration) (string, error) {
+func (inst *Client) DownloadObject(storeName, objectName, destinationPath string, timeout time.Duration) (*natlib.Response, error) {
 	body := map[string]interface{}{
 		"action":          "download.object",
 		"storeName":       storeName,
@@ -124,8 +124,8 @@ func (inst *Client) DownloadObject(storeName, objectName, destinationPath string
 
 	response, err := inst.storeCommandRequest(body, "download.object", timeout)
 	if err != nil {
-		return "", err
+		return response, err
 	}
 
-	return response.Payload, nil
+	return response, nil
 }

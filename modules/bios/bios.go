@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"strings"
 )
 
 // Command structure to decode the incoming JSON
@@ -115,6 +116,27 @@ func (s *Service) handleError(reply string, responseCode int, details string) {
 	}
 	respJSON, _ := json.Marshal(response)
 	s.natsConn.Publish(reply, respJSON)
+}
+
+// Common NATS publish method
+func (s *Service) publishResponse(msg *nats.Msg, response any, responseCode int) {
+	var debug bool
+	subject := msg.Reply
+	if msg.Header.Get(responseTypeKey) == strings.ToLower(responseTypeKey) {
+		debug = true
+	}
+	if debug {
+		out := map[string]interface{}{
+			"code":    responseCode,
+			"message": code.GetMsg(responseCode),
+			"payload": response,
+		}
+		respJSON, _ := json.Marshal(out)
+		s.natsConn.Publish(subject, respJSON)
+	} else {
+		respJSON, _ := json.Marshal(response)
+		s.natsConn.Publish(subject, respJSON)
+	}
 }
 
 // Common NATS publish method

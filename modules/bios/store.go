@@ -86,7 +86,11 @@ func (s *Service) getActionFromMessage(action, subject string) string {
 
 func (s *Service) handleGetStores(m *nats.Msg, _ StoreRequest) {
 	content, err := s.natsClient.GetStores()
-	s.processResult(m.Reply, content, err)
+	if err != nil {
+		s.handleError(m.Reply, code.ERROR, err.Error())
+		return
+	}
+	s.publishResponse(m, content, code.SUCCESS)
 }
 
 func (s *Service) handleGetObject(m *nats.Msg, decoded StoreRequest) {
@@ -95,7 +99,11 @@ func (s *Service) handleGetObject(m *nats.Msg, decoded StoreRequest) {
 		return
 	}
 	objects, err := s.natsClient.GetStoreObjects(storeName)
-	s.processResult(m.Reply, objects, err)
+	if err != nil {
+		s.handleError(m.Reply, code.ERROR, err.Error())
+		return
+	}
+	s.publishResponse(m, objects, code.SUCCESS)
 }
 
 func (s *Service) handleAddObject(m *nats.Msg, decoded StoreRequest) {
@@ -110,7 +118,14 @@ func (s *Service) handleAddObject(m *nats.Msg, decoded StoreRequest) {
 		return
 	}
 	err = s.natsClient.PutBytes(storeName, objectName, dataBytes, true)
-	s.processResult(m.Reply, "Object added successfully", err)
+	if err != nil {
+		s.handleError(m.Reply, code.ERROR, err.Error())
+		return
+	}
+	out := Message{
+		"Object added successfully",
+	}
+	s.publishResponse(m, out, code.SUCCESS)
 }
 
 func (s *Service) handleDeleteObject(m *nats.Msg, decoded StoreRequest) {
@@ -120,7 +135,14 @@ func (s *Service) handleDeleteObject(m *nats.Msg, decoded StoreRequest) {
 		return
 	}
 	err := s.natsClient.DeleteObject(storeName, objectName)
-	s.processResult(m.Reply, "Object deleted successfully", err)
+	if err != nil {
+		s.handleError(m.Reply, code.ERROR, err.Error())
+		return
+	}
+	out := Message{
+		"Object deleted successfully",
+	}
+	s.publishResponse(m, out, code.SUCCESS)
 }
 
 func (s *Service) handleDownloadObject(m *nats.Msg, decoded StoreRequest) {
@@ -131,7 +153,14 @@ func (s *Service) handleDownloadObject(m *nats.Msg, decoded StoreRequest) {
 		return
 	}
 	err := s.natsClient.DownloadObject(storeName, objectName, destinationPath)
-	s.processResult(m.Reply, "Object downloaded successfully", err)
+	if err != nil {
+		s.handleError(m.Reply, code.ERROR, err.Error())
+		return
+	}
+	out := Message{
+		"Object downloaded successfully",
+	}
+	s.publishResponse(m, out, code.SUCCESS)
 }
 
 func (s *Service) validateField(reply string, field, errorMsg string) string {
@@ -152,4 +181,5 @@ func (s *Service) processResult(reply string, result interface{}, err error) {
 		return
 	}
 	s.publish(reply, string(marshal), code.SUCCESS)
+
 }

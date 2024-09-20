@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/NubeDev/flexy/modules/bios/appmanager"
 	"github.com/NubeDev/flexy/utils/code"
@@ -14,8 +13,7 @@ func (s *Service) handleListLibraryApps(m *nats.Msg) {
 		s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error listing library apps: %v", err))
 		return
 	}
-	respJSON, _ := json.Marshal(apps)
-	s.publish(m.Reply, string(respJSON), code.SUCCESS)
+	s.publishResponse(m, apps, code.SUCCESS)
 }
 
 func (s *Service) handleListInstalledApps(m *nats.Msg) {
@@ -24,8 +22,7 @@ func (s *Service) handleListInstalledApps(m *nats.Msg) {
 		s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error listing installed apps: %v", err))
 		return
 	}
-	respJSON, _ := json.Marshal(apps)
-	s.publish(m.Reply, string(respJSON), code.SUCCESS)
+	s.publishResponse(m, apps, code.SUCCESS)
 }
 
 func (s *Service) handleInstallApp(m *nats.Msg) {
@@ -56,7 +53,10 @@ func (s *Service) handleInstallApp(m *nats.Msg) {
 	if err != nil {
 		s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error installing app: %v", err))
 	} else {
-		s.publish(m.Reply, fmt.Sprintf("App %s version %s installed", decoded.Name, decoded.Version), code.SUCCESS)
+		out := Message{
+			fmt.Sprintf("App %s version %s installed", decoded.Name, decoded.Version),
+		}
+		s.publishResponse(m, out, code.SUCCESS)
 	}
 }
 
@@ -108,6 +108,9 @@ func (s *Service) handleUninstallApp(m *nats.Msg) {
 	if err != nil {
 		s.handleError(m.Reply, code.ERROR, fmt.Sprintf("Error uninstalling app: %v", err))
 	} else {
-		s.publish(m.Reply, fmt.Sprintf("App %s version %s uninstalled", decoded.Name, decoded.Version), code.SUCCESS)
+		out := Message{
+			fmt.Sprintf("App %s version %s uninstalled", decoded.Name, decoded.Version),
+		}
+		s.publishResponse(m, out, code.SUCCESS)
 	}
 }

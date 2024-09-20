@@ -194,11 +194,18 @@ func extractConfigFromZip(zipFilePath string) (string, error) {
 		return "", err
 	}
 	defer reader.Close()
-
 	// Iterate through the files in the zip archive
 	for _, file := range reader.File {
 		// Check if it's the config.yaml file
-		if file.Name == "config.yaml" {
+		parts := strings.Split(file.Name, "/")
+		var fileName string
+		for _, part := range parts {
+			if part == "config.yaml" {
+				fileName = "config.yaml"
+				break
+			}
+		}
+		if fileName == "config.yaml" {
 			// Create a temporary file to extract the config.yaml
 			tempFile, err := ioutil.TempFile("", "config-*.yaml")
 			if err != nil {
@@ -638,7 +645,6 @@ func (inst *AppManager) stopAndDisableService(appName string) error {
 }
 
 // unzipApp unzips the app from a zip file into the correct install directory structure
-// unzipApp unzips the app from a zip file into the correct install directory structure
 func (inst *AppManager) unzipApp(zipFilePath, destPath, appName string) error {
 	reader, err := zip.OpenReader(zipFilePath)
 	if err != nil {
@@ -653,16 +659,22 @@ func (inst *AppManager) unzipApp(zipFilePath, destPath, appName string) error {
 
 	// Extract all files from the zip archive
 	for _, file := range reader.File {
-		filePath := filepath.Join(destPath, file.Name)
-
-		// Check if the current file is a directory
+		// Skip directories
 		if file.FileInfo().IsDir() {
-			// Create directory
-			if err := os.MkdirAll(filePath, os.ModePerm); err != nil {
-				return err
-			}
 			continue
 		}
+
+		// Remove the top-level directory from the file path
+		relPath := file.Name
+		parts := strings.SplitN(relPath, "/", 2)
+		if len(parts) == 2 {
+			relPath = parts[1]
+		} else {
+			// If there's no '/', the file is at the root of the ZIP
+			relPath = parts[0]
+		}
+
+		filePath := filepath.Join(destPath, relPath)
 
 		// Ensure the directory for the file exists
 		if err := os.MkdirAll(filepath.Dir(filePath), os.ModePerm); err != nil {
@@ -675,7 +687,7 @@ func (inst *AppManager) unzipApp(zipFilePath, destPath, appName string) error {
 		}
 
 		// If this is the app binary, set it as executable
-		if file.Name == appName || filepath.Ext(file.Name) == "" {
+		if filepath.Base(relPath) == appName || filepath.Ext(relPath) == "" {
 			if err := inst.setExecutable(filePath); err != nil {
 				return err
 			}

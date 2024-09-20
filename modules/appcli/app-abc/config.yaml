@@ -1,0 +1,4 @@
+id: "app-abc"
+version: "v1.0.3"
+description: "A demo app"
+url: "nats://localhost:4222"

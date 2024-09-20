@@ -465,7 +465,7 @@ var downloadObjectCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			fmt.Printf("downloaded successfully to %s \n", resp)
+			pprint.PrintJSON(resp)
 			return nil
 		})
 	},

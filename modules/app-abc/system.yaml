@@ -1,5 +1,0 @@
-service_file:
-  env: "g=/data/bacnet-server-c"
-  attach_working_dir_on_exec_start: true
-
-
